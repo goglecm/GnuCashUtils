@@ -68,7 +68,7 @@ The system must:
 - `--emails-dir`: directory containing `.eml` files (scanned recursively, including subdirectories).
 - `--receipts-dir`: directory containing receipt images (`jpeg|jpg|png|heic|heif`).
 - `--processed-receipts-dir`: destination directory for approved/matched receipts.
-- Optional: `--state-dir` for indexes/cache/audit metadata.
+- `--state-dir` (required): directory for indexes/cache/audit metadata.
 
 ## 4.2 Outputs
 - Updated GnuCash file (in-place by default, optional copy mode).
@@ -289,6 +289,8 @@ python -m gnc_enrich apply --state-dir /path/state --in-place
 Notes:
 - CLI-only input orchestration (no drag-drop).
 - Review is web-based but locally hosted.
+- Global `-v` / `--verbose` flag enables DEBUG-level trace logging for all subcommands.
+- After `pip install`, the `gnc-enrich` console script is available (equivalent to `python -m gnc_enrich`).
 
 ---
 

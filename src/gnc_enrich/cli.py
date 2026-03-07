@@ -3,13 +3,30 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 
 from gnc_enrich.config import ApplyConfig, LlmConfig, LlmMode, ReviewConfig, RunConfig
 
+logger = logging.getLogger(__name__)
+
+
+def _configure_logging(verbose: bool) -> None:
+    """Set up logging with DEBUG level if verbose, else INFO."""
+    level = logging.DEBUG if verbose else logging.INFO
+    fmt = "%(asctime)s %(levelname)-7s [%(name)s] %(message)s"
+    logging.basicConfig(level=level, format=fmt)
+    if verbose:
+        logger.debug("Verbose logging enabled")
+
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser with run/review/apply subcommands."""
     parser = argparse.ArgumentParser(prog="gnc-enrich")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Enable debug-level trace logging",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Build candidate proposals from source data")
@@ -45,8 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse CLI arguments and dispatch to the appropriate workflow."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    _configure_logging(args.verbose)
 
     if args.command == "run":
         llm = LlmConfig(
@@ -105,4 +124,3 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     parser.error(f"Unknown command: {args.command}")
-    return 2

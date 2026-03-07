@@ -1,0 +1,32 @@
+---
+description: Code quality standards for the gnc_enrich project
+alwaysApply: true
+---
+
+# Code Quality
+
+## Python
+
+- Target: Python 3.11+
+- All public classes and methods must have docstrings.
+- Use `from __future__ import annotations` in every module.
+- Use `logging.getLogger(__name__)` per module — never `print()` for diagnostics.
+- Heavy optional deps (`requests`, `sklearn`) imported lazily inside methods that need them.
+
+## Error Handling
+
+- JSONL loaders: catch `json.JSONDecodeError` per line, log warning, skip.
+- `_parse_fraction`: catch `ZeroDivisionError` / `InvalidOperation`, return `Decimal(0)`.
+- LLM calls: always in try/except with `logger.warning(..., exc_info=True)`.
+- Send `Authorization: Bearer` header when `LlmConfig.api_key` is set.
+
+## State Files
+
+All 9 state files must include a `_schema_version` header line/key:
+`email_index.jsonl`, `email_index_manifest.json`, `proposals.json`, `decisions.jsonl`,
+`skip_state.json`, `feedback_events.jsonl`, `audit_log.jsonl`, `apply_journal.jsonl`, `run_config.json`.
+
+## No Dead Code
+
+- Remove unused variables, unreachable code, imports that aren't used.
+- `ReviewAction` enum is validated via `ReviewAction.validate()` in the webapp.

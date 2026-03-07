@@ -1,6 +1,6 @@
 # Test Plan & Strategy (v1)
 
-## Status: Implemented — 163 tests passing
+## Status: Implemented — 198 tests passing
 
 ## Objectives
 - Provide immediate, repeatable confidence that all modules work correctly.
@@ -42,12 +42,13 @@
 | `test_review.py` | 15 | `review/service`, `review/webapp` (Flask test client) |
 | `test_integration.py` | 3 | Full cycle: run->review->apply, Flask flow, CLI dispatch |
 | `test_cli.py` | 4 | `cli` (parser, flags, LLM args) |
-| `test_new_features.py` | 21 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence |
+| `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
+| `test_system.py` | 17 | Full system tests: pipeline with multi-subdir emails, review cycle, apply+rollback, Flask webapp |
 
 ## Fixtures
 
 - **`tests/conftest.py`**: `SAMPLE_GNUCASH_XML` string constant, `sample_gnucash_path` (gzip), `sample_gnucash_xml_path` (plain XML)
-- **`tests/fixtures/emails/`**: 5 synthetic `.eml` files (order confirmation, bank alert, receipt email, subscription, unrelated newsletter)
+- **`tests/fixtures/emails/`**: 13 synthetic `.eml` files across 4 subdirectories (bank, amazon, subscriptions, utilities) modelled on Proton Mail export format
 - **Receipt images**: Generated programmatically in test setup using Pillow `ImageDraw`
 
 ## Tooling

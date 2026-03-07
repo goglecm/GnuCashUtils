@@ -3,28 +3,30 @@
 from __future__ import annotations
 
 import logging
+import os
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from flask import Flask, redirect, render_template, request, url_for
 
 from gnc_enrich.config import ReviewConfig
-from gnc_enrich.domain.models import ReviewDecision, Split
+from gnc_enrich.domain.models import ReviewAction, ReviewDecision, Split
 from gnc_enrich.review.service import ReviewQueueService
 
 logger = logging.getLogger(__name__)
 
 
 def create_app(service: ReviewQueueService) -> Flask:
+    """Create and configure the Flask application for transaction review."""
     template_dir = Path(__file__).parent / "templates"
     app = Flask(__name__, template_folder=str(template_dir))
-    app.secret_key = "gnc-enrich-review"
+    app.secret_key = os.urandom(32)
 
     @app.route("/")
     def index():
         proposal = service.next_proposal()
         if proposal is None:
-            return render_template("done.html", total=service.total_count, decided=service.decided_count)
+            return render_template("done.html", total=service.total_count, decided=service.decided_count, pending=0)
         return redirect(url_for("review", proposal_id=proposal.proposal_id))
 
     @app.route("/review/<proposal_id>")
@@ -48,7 +50,8 @@ def create_app(service: ReviewQueueService) -> Flask:
         if proposal is None:
             return redirect(url_for("index"))
 
-        action = request.form.get("action", "skip")
+        raw_action = request.form.get("action", "skip")
+        action = ReviewAction.validate(raw_action)
         description = request.form.get("description", proposal.suggested_description)
         note = request.form.get("note", "")
 
@@ -104,11 +107,13 @@ class ReviewWebApp:
         self._app: Flask | None = None
 
     def get_app(self) -> Flask:
+        """Lazily create and return the Flask app instance."""
         if self._app is None:
             self._app = create_app(self._service)
         return self._app
 
     def run(self, host: str, port: int) -> None:
+        """Start the Flask development server."""
         app = self.get_app()
         logger.info("Starting review web app at http://%s:%d", host, port)
         app.run(host=host, port=port, debug=False)

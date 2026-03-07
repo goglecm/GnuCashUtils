@@ -147,13 +147,13 @@ class TestReceiptMatcher:
         result = matcher.match(tx)
         assert result is None
 
-    def test_no_total_low_score(self) -> None:
+    def test_no_total_returns_no_match(self) -> None:
+        """Receipts with no parsed total (OCR failure) must not match any transaction."""
         receipt = _make_receipt("r1", total=None)
         matcher = ReceiptMatcher([receipt])
         tx = _make_tx(amount="25.00")
         result = matcher.match(tx)
-        assert result is not None
-        assert result.relevance_score < 1.0
+        assert result is None
 
     def test_one_to_one_prevents_double_match(self) -> None:
         receipt = _make_receipt("r1", total="25.00")

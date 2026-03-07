@@ -54,6 +54,7 @@ class EmailMatcher:
                 subject=ev.subject,
                 sent_at=ev.sent_at,
                 body_snippet=ev.body_snippet,
+                full_body=ev.full_body,
                 parsed_amounts=ev.parsed_amounts,
                 relevance_score=round(score, 4),
             )
@@ -68,6 +69,7 @@ class EmailMatcher:
         ev: EmailEvidence,
         desc_tokens: set[str],
     ) -> float:
+        """Compute a weighted relevance score for one email against a transaction."""
         score = 0.0
 
         tol = Decimal(str(self._tolerance))

@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from gnc_enrich.domain.models import Proposal, ReviewDecision, SkipRecord
+from gnc_enrich.domain.models import EmailEvidence, Proposal, ReceiptEvidence, ReviewDecision, SkipRecord
+from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
 from gnc_enrich.state.repository import StateRepository
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ class ReviewQueueService:
 
     def __init__(self, state_repo: StateRepository) -> None:
         self._state = state_repo
+        self._feedback = FeedbackTrainer(state_dir=state_repo._dir)
         self._proposals: list[Proposal] = []
         self._decided_ids: set[str] = set()
         self._reload()
@@ -74,8 +76,21 @@ class ReviewQueueService:
                 approved_receipt=decision.approved_receipt,
             )
 
+        if decision.action in ("approve", "edit") and (
+            decision.approved_email_ids or decision.approved_receipt
+        ):
+            decision = self._enrich_from_approved_evidence(decision)
+
         self._state.save_decision(decision)
         self._decided_ids.add(decision.tx_id)
+
+        proposal = self.get_proposal_by_tx(decision.tx_id)
+        if proposal:
+            self._feedback.record_feedback(
+                proposal,
+                accepted=decision.action in ("approve", "edit"),
+                note=decision.reviewer_note,
+            )
 
         if decision.action == "skip":
             self._state.save_skip(SkipRecord(
@@ -85,6 +100,46 @@ class ReviewQueueService:
             ))
 
         logger.info("Decision recorded: tx=%s action=%s", decision.tx_id, decision.action)
+
+    def _enrich_from_approved_evidence(self, decision: ReviewDecision) -> ReviewDecision:
+        """Enrich the decision description using only user-approved evidence."""
+        proposal = self.get_proposal_by_tx(decision.tx_id)
+        if not proposal or not proposal.evidence:
+            return decision
+
+        approved_emails: list[EmailEvidence] = []
+        if decision.approved_email_ids and proposal.evidence.emails:
+            id_set = set(decision.approved_email_ids)
+            approved_emails = [e for e in proposal.evidence.emails if e.evidence_id in id_set]
+
+        approved_receipt: ReceiptEvidence | None = None
+        if decision.approved_receipt and proposal.evidence.receipt:
+            approved_receipt = proposal.evidence.receipt
+
+        if not approved_emails and not approved_receipt:
+            return decision
+
+        predictor = CategoryPredictor()
+
+        if approved_receipt and approved_receipt.line_items:
+            expanded = predictor.describe_terse_items(approved_receipt)
+            if expanded != [it.description for it in approved_receipt.line_items]:
+                for it, desc in zip(approved_receipt.line_items, expanded):
+                    it.description = desc
+
+        enriched = predictor.enrich_description_from_evidence(
+            decision.final_description, approved_emails, approved_receipt
+        )
+        return ReviewDecision(
+            tx_id=decision.tx_id,
+            action=decision.action,
+            final_description=enriched,
+            final_splits=decision.final_splits,
+            reviewer_note=decision.reviewer_note,
+            decided_at=decision.decided_at,
+            approved_email_ids=decision.approved_email_ids,
+            approved_receipt=decision.approved_receipt,
+        )
 
     def is_decided(self, tx_id: str) -> bool:
         return tx_id in self._decided_ids

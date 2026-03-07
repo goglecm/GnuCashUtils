@@ -231,7 +231,7 @@ class TestTerseItemLookup:
         result = predictor.describe_terse_items(receipt)
         assert result == []
 
-    @patch("gnc_enrich.ml.predictor.requests.post")
+    @patch("requests.post")
     def test_llm_expands_terse_items(self, mock_post) -> None:
         mock_post.return_value.status_code = 200
         mock_post.return_value.raise_for_status = lambda: None
@@ -438,3 +438,260 @@ class TestGracefulNoEvidence:
         proposal = predictor.propose(tx, [], None)
         assert proposal.suggested_description
         assert proposal.confidence > 0
+
+
+class TestRefundDetection:
+    """Rule 10: refunds should be categorized like the original transaction."""
+
+    def test_refund_detected_by_negative_amount(self) -> None:
+        txs = []
+        for i in range(1, 4):
+            t = _make_tx(tx_id=f"t{i}", amount=Decimal("50.00"), desc="Tesco Groceries")
+            t.splits = [Split(account_path="Expenses:Groceries", amount=t.amount)]
+            t.original_category = "Expenses:Groceries"
+            txs.append(t)
+        for i in range(4, 7):
+            t = _make_tx(tx_id=f"t{i}", amount=Decimal("20.00"), desc="Amazon Digital")
+            t.splits = [Split(account_path="Expenses:Online", amount=t.amount)]
+            t.original_category = "Expenses:Online"
+            txs.append(t)
+
+        predictor = CategoryPredictor(historical_transactions=txs)
+
+        refund_tx = _make_tx(tx_id="t99", amount=Decimal("-50.00"), desc="Tesco Refund")
+        proposal = predictor.propose(refund_tx, [], None)
+        assert "Refund detected" in proposal.rationale
+
+    def test_refund_not_triggered_for_positive_amount(self) -> None:
+        txs = []
+        for i in range(1, 4):
+            t = _make_tx(tx_id=f"t{i}", amount=Decimal("50.00"), desc="Tesco")
+            t.splits = [Split(account_path="Expenses:Groceries", amount=t.amount)]
+            t.original_category = "Expenses:Groceries"
+            txs.append(t)
+        for i in range(4, 7):
+            t = _make_tx(tx_id=f"t{i}", amount=Decimal("20.00"), desc="Amazon")
+            t.splits = [Split(account_path="Expenses:Online", amount=t.amount)]
+            t.original_category = "Expenses:Online"
+            txs.append(t)
+        predictor = CategoryPredictor(historical_transactions=txs)
+
+        normal_tx = _make_tx(tx_id="t99", amount=Decimal("25.00"), desc="Tesco")
+        proposal = predictor.propose(normal_tx, [], None)
+        assert "Refund detected" not in proposal.rationale
+
+
+class TestSchemaVersionHeaders:
+    """Spec Section 13: all state files must have schema version headers."""
+
+    def test_decisions_jsonl_has_header(self, tmp_path: Path) -> None:
+        state = StateRepository(tmp_path)
+        dec = ReviewDecision(
+            tx_id="tx1", action="approve", final_description="test",
+            final_splits=[], decided_at=datetime.now(timezone.utc),
+        )
+        state.save_decision(dec)
+        first_line = (tmp_path / "decisions.jsonl").read_text().splitlines()[0]
+        import json
+        assert "_schema_version" in json.loads(first_line)
+
+    def test_audit_log_has_header(self, tmp_path: Path) -> None:
+        from gnc_enrich.domain.models import AuditEntry
+        state = StateRepository(tmp_path)
+        entry = AuditEntry(
+            entry_id="e1", tx_id="tx1", action="approve",
+            proposed_description="p", proposed_splits=[],
+            final_description="f", final_splits=[],
+            confidence=0.9, evidence_ids=[],
+            timestamp=datetime.now(timezone.utc),
+        )
+        state.append_audit(entry)
+        first_line = (tmp_path / "audit_log.jsonl").read_text().splitlines()[0]
+        import json
+        assert "_schema_version" in json.loads(first_line)
+
+    def test_feedback_events_has_header(self, tmp_path: Path) -> None:
+        state = StateRepository(tmp_path)
+        state.append_feedback({"type": "approve", "tx_id": "tx1"})
+        first_line = (tmp_path / "feedback_events.jsonl").read_text().splitlines()[0]
+        import json
+        assert "_schema_version" in json.loads(first_line)
+
+    def test_email_index_has_header(self, tmp_path: Path) -> None:
+        emails_dir = tmp_path / "emails"
+        emails_dir.mkdir()
+        idx_dir = tmp_path / "state"
+        idx_dir.mkdir()
+        repo = EmailIndexRepository()
+        repo.build_or_load(emails_dir, idx_dir)
+        first_line = (idx_dir / "email_index.jsonl").read_text().splitlines()[0]
+        import json
+        assert "_schema_version" in json.loads(first_line)
+
+    def test_email_manifest_has_schema_version(self, tmp_path: Path) -> None:
+        emails_dir = tmp_path / "emails"
+        emails_dir.mkdir()
+        idx_dir = tmp_path / "state"
+        idx_dir.mkdir()
+        repo = EmailIndexRepository()
+        repo.build_or_load(emails_dir, idx_dir)
+        import json
+        manifest = json.loads((idx_dir / "email_index_manifest.json").read_text())
+        assert "_schema_version" in manifest
+
+    def test_schema_header_skipped_on_load(self, tmp_path: Path) -> None:
+        """Schema version lines must not appear as data when loading."""
+        state = StateRepository(tmp_path)
+        state.append_feedback({"type": "approve", "tx_id": "tx1"})
+        state.append_feedback({"type": "skip", "tx_id": "tx2"})
+        loaded = state.load_feedback()
+        assert len(loaded) == 2
+        assert all("_schema_version" not in d for d in loaded)
+
+
+class TestEvidenceEnrichmentWiring:
+    """Rule 14: evidence approval must actually enrich the description."""
+
+    def test_submit_decision_enriches_from_approved_emails(self, tmp_path: Path) -> None:
+        email_ev = EmailEvidence(
+            evidence_id="em1", message_id="<m@x>", sender="shop@co.uk",
+            subject="Order Confirmation",
+            sent_at=datetime(2025, 2, 1, tzinfo=timezone.utc),
+            body_snippet="Your order for Widget X",
+            parsed_amounts=[Decimal("9.99")],
+            full_body="Thank you for purchasing Widget X from our store.",
+        )
+        proposal = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="Payment 01/02/2025", suggested_splits=[],
+            confidence=0.8, rationale="ML prediction",
+            evidence=EvidencePacket(
+                tx_id="tx1", emails=[email_ev], receipt=None, similar_transactions=[],
+            ),
+        )
+        state = StateRepository(tmp_path)
+        state.save_proposals([proposal])
+
+        svc = ReviewQueueService(state)
+
+        decision = ReviewDecision(
+            tx_id="tx1", action="approve",
+            final_description="Payment 01/02/2025",
+            final_splits=[], decided_at=None,
+            approved_email_ids=["em1"], approved_receipt=False,
+        )
+        svc.submit_decision(decision)
+
+        decisions = state.load_decisions()
+        assert len(decisions) == 1
+        assert "Widget X" in decisions[0].final_description or "Widget" in decisions[0].final_description
+
+    def test_submit_decision_no_enrichment_without_approval(self, tmp_path: Path) -> None:
+        proposal = Proposal(
+            proposal_id="p2", tx_id="tx1",
+            suggested_description="Payment 01/02/2025", suggested_splits=[],
+            confidence=0.8, rationale="test",
+            evidence=EvidencePacket(
+                tx_id="tx1", emails=[], receipt=None, similar_transactions=[],
+            ),
+        )
+        state = StateRepository(tmp_path)
+        state.save_proposals([proposal])
+
+        svc = ReviewQueueService(state)
+
+        decision = ReviewDecision(
+            tx_id="tx1", action="approve",
+            final_description="Payment 01/02/2025",
+            final_splits=[], decided_at=None,
+            approved_email_ids=[], approved_receipt=False,
+        )
+        svc.submit_decision(decision)
+
+        decisions = state.load_decisions()
+        assert decisions[0].final_description == "Payment 01/02/2025"
+
+
+class TestCornerCases:
+    """Tests for corner cases fixed during code audit."""
+
+    def test_parse_fraction_zero_denominator(self) -> None:
+        """_parse_fraction('0/0') must not raise ZeroDivisionError."""
+        from gnc_enrich.gnucash.loader import _parse_fraction
+        result = _parse_fraction("0/0")
+        assert result == Decimal(0)
+
+    def test_parse_fraction_garbage(self) -> None:
+        from gnc_enrich.gnucash.loader import _parse_fraction
+        result = _parse_fraction("abc/def")
+        assert result == Decimal(0)
+
+    def test_parse_fraction_normal(self) -> None:
+        from gnc_enrich.gnucash.loader import _parse_fraction
+        assert _parse_fraction("1500/100") == Decimal("15")
+
+    def test_jsonl_corrupt_line_skipped(self, tmp_path: Path) -> None:
+        """A corrupt JSONL line must be skipped, not crash the load."""
+        state = StateRepository(tmp_path)
+        state.append_feedback({"type": "test", "tx_id": "tx1"})
+        fb_path = tmp_path / "feedback_events.jsonl"
+        with fb_path.open("a", encoding="utf-8") as f:
+            f.write("{corrupt json\n")
+        state.append_feedback({"type": "test", "tx_id": "tx2"})
+        loaded = state.load_feedback()
+        assert len(loaded) == 2
+        assert loaded[0]["tx_id"] == "tx1"
+        assert loaded[1]["tx_id"] == "tx2"
+
+    def test_email_matcher_preserves_full_body(self) -> None:
+        """EmailMatcher.match() must not drop full_body from evidence."""
+        from gnc_enrich.matching.email_matcher import EmailMatcher
+        from gnc_enrich.email.index import EmailIndexRepository
+
+        repo = EmailIndexRepository()
+        ev = EmailEvidence(
+            evidence_id="e1", message_id="<m@x>", sender="shop@co.uk",
+            subject="Order", sent_at=datetime(2025, 1, 15, tzinfo=timezone.utc),
+            body_snippet="snippet", full_body="This is the FULL email body content.",
+            parsed_amounts=[Decimal("25.00")],
+        )
+        repo._entries = [ev]
+        matcher = EmailMatcher(repo, date_window_days=7, amount_tolerance=0.50)
+
+        tx = _make_tx(amount=Decimal("25.00"))
+        results = matcher.match(tx)
+        assert len(results) >= 1
+        assert results[0].full_body == "This is the FULL email body content."
+
+    def test_review_action_validates(self) -> None:
+        """ReviewAction.validate rejects invalid actions."""
+        from gnc_enrich.domain.models import ReviewAction
+        assert ReviewAction.validate("approve") == "approve"
+        assert ReviewAction.validate("skip") == "skip"
+        import pytest
+        with pytest.raises(ValueError, match="Invalid review action"):
+            ReviewAction.validate("invalid_action")
+
+    def test_verbose_flag_accepted(self) -> None:
+        """The CLI accepts the -v/--verbose flag."""
+        from gnc_enrich.cli import build_parser
+        parser = build_parser()
+        args = parser.parse_args(["-v", "run", "--gnucash-path", "x", "--emails-dir", "e",
+                                  "--receipts-dir", "r", "--processed-receipts-dir", "p",
+                                  "--state-dir", "s"])
+        assert args.verbose is True
+
+    def test_receipt_glob_case_insensitive(self, tmp_path: Path) -> None:
+        """ReceiptRepository must find uppercase-extension files."""
+        from gnc_enrich.receipt.repository import ReceiptRepository
+        from PIL import Image
+
+        img = Image.new("RGB", (10, 10), "white")
+        img.save(tmp_path / "receipt.JPG")
+        img.save(tmp_path / "receipt2.png")
+
+        repo = ReceiptRepository()
+        files = repo.list_unprocessed(tmp_path)
+        names = {f.name for f in files}
+        assert "receipt.JPG" in names
+        assert "receipt2.png" in names

@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 163 tests passing.
+> Status: **v1 Implemented** — all modules complete, 198 tests passing.
 
 ## What this project does
 
@@ -196,7 +196,7 @@ The `--state-dir` directory contains:
 ## Running tests
 
 ```bash
-pytest              # all 163 tests
+pytest              # all 198 tests
 pytest -v           # verbose
 pytest -k matching  # keyword filter
 pytest tests/test_integration.py -v  # integration only
@@ -232,7 +232,7 @@ LLM is used for:
 
 - **`ModuleNotFoundError`**: Run `pip install -e ".[dev]"`
 - **Tesseract not found**: Install the system package (see Prerequisites)
-- **Bytecode clutter**: `find . -type d -name '__pycache__' -prune -exec rm -rf {} +`
+- **Bytecode clutter**: `make clean`
 
 ---
 

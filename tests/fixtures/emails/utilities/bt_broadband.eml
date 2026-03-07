@@ -1,0 +1,21 @@
+Content-Type: text/plain; charset="utf-8"
+Date: Sat, 11 Mar 2023 07:00:00 +0000
+From: "BT" <billing@bt.com>
+To: "User" <user@example.com>
+Subject: Your BT bill is ready - £54.00
+Message-ID: <bt-bill-mar@bt.com>
+MIME-Version: 1.0
+
+Dear User,
+
+Your BT bill for March 2023 is now available.
+
+Bill summary:
+  Fibre broadband: £39.99
+  Phone line rental: £14.01
+  Total: £54.00
+
+Payment will be taken by Direct Debit on 25 March 2023.
+
+Thank you,
+BT

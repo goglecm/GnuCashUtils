@@ -62,7 +62,7 @@ class TestEmailIndexRepository:
     def test_build_from_directory(self, tmp_path: Path) -> None:
         repo = EmailIndexRepository()
         repo.build_or_load(FIXTURES_DIR, tmp_path)
-        assert len(repo.entries) == 5
+        assert len(repo.entries) == 13
 
     def test_index_persisted(self, tmp_path: Path) -> None:
         repo = EmailIndexRepository()
@@ -71,7 +71,8 @@ class TestEmailIndexRepository:
         index_file = tmp_path / "email_index.jsonl"
         assert index_file.exists()
         lines = [l for l in index_file.read_text().splitlines() if l.strip()]
-        assert len(lines) == 5
+        data_lines = [l for l in lines if '"_schema_version"' not in l]
+        assert len(data_lines) == 13
 
     def test_incremental_update(self, tmp_path: Path) -> None:
         repo = EmailIndexRepository()
@@ -134,4 +135,4 @@ class TestEmailIndexRepository:
         import json
         manifest = json.loads((tmp_path / "email_index_manifest.json").read_text())
         assert "order_confirm.eml" in manifest["indexed_files"]
-        assert len(manifest["indexed_files"]) == 5
+        assert len(manifest["indexed_files"]) == 13

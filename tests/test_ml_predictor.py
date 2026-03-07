@@ -174,16 +174,16 @@ class TestCategoryPredictor:
         predictor = CategoryPredictor(llm_config=llm_cfg)
         tx = _make_target_tx(desc="Unknown purchase")
 
-        with patch("gnc_enrich.ml.predictor.requests") as mock_requests:
+        with patch("requests.post") as mock_post:
             mock_resp = MagicMock()
             mock_resp.json.return_value = {
                 "choices": [{"message": {"content": "Expenses:Shopping"}}]
             }
             mock_resp.raise_for_status = MagicMock()
-            mock_requests.post.return_value = mock_resp
+            mock_post.return_value = mock_resp
 
             proposal = predictor.propose(tx, [], None)
-            mock_requests.post.assert_called_once()
+            mock_post.assert_called_once()
             assert "LLM suggestion" in proposal.rationale
 
 

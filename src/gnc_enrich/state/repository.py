@@ -203,6 +203,7 @@ class StateRepository:
     # -- proposals ------------------------------------------------------------
 
     def save_proposals(self, proposals: list[Proposal]) -> None:
+        """Persist all proposals to proposals.json."""
         data = {
             "schema_version": _SCHEMA_VERSION,
             "proposals": [_serialize(p) for p in proposals],
@@ -220,22 +221,34 @@ class StateRepository:
     # -- decisions ------------------------------------------------------------
 
     def save_decision(self, decision: ReviewDecision) -> None:
+        """Append a review decision to decisions.jsonl."""
+        self._ensure_jsonl_header(self._decisions_path)
         line = json.dumps(_serialize(decision), cls=_Encoder) + "\n"
         with self._decisions_path.open("a", encoding="utf-8") as f:
             f.write(line)
 
     def load_decisions(self) -> list[ReviewDecision]:
+        """Load all review decisions from decisions.jsonl."""
         if not self._decisions_path.exists():
             return []
         results: list[ReviewDecision] = []
-        for line in self._decisions_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                results.append(_parse_decision(json.loads(line)))
+        for lineno, line in enumerate(self._decisions_path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("Skipping corrupt line %d in %s", lineno, self._decisions_path)
+                continue
+            if "_schema_version" in d:
+                continue
+            results.append(_parse_decision(d))
         return results
 
     # -- skips ----------------------------------------------------------------
 
     def save_skip(self, skip: SkipRecord) -> None:
+        """Persist a skip record, replacing any prior skip for the same tx."""
         skips = self._load_skip_records()
         skips = [s for s in skips if s.tx_id != skip.tx_id]
         skips.append(skip)
@@ -254,53 +267,79 @@ class StateRepository:
         return [_parse_skip(s) for s in raw.get("skips", [])]
 
     def load_skipped_ids(self) -> set[str]:
+        """Return the set of transaction IDs that have been skipped."""
         return {s.tx_id for s in self._load_skip_records()}
 
     # -- audit ----------------------------------------------------------------
 
     def append_audit(self, entry: AuditEntry) -> None:
+        self._ensure_jsonl_header(self._audit_path)
         line = json.dumps(_serialize(entry), cls=_Encoder) + "\n"
         with self._audit_path.open("a", encoding="utf-8") as f:
             f.write(line)
 
     def load_audit_log(self) -> list[AuditEntry]:
+        """Load all audit entries from audit_log.jsonl."""
         if not self._audit_path.exists():
             return []
         results: list[AuditEntry] = []
-        for line in self._audit_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
+        for lineno, line in enumerate(self._audit_path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
                 d = json.loads(line)
-                results.append(AuditEntry(
-                    entry_id=d["entry_id"],
-                    tx_id=d["tx_id"],
-                    action=d["action"],
-                    proposed_description=d["proposed_description"],
-                    proposed_splits=[_parse_split(s) for s in d["proposed_splits"]],
-                    final_description=d["final_description"],
-                    final_splits=[_parse_split(s) for s in d["final_splits"]],
-                    confidence=float(d["confidence"]),
-                    evidence_ids=d.get("evidence_ids", []),
-                    timestamp=_parse_datetime(d.get("timestamp")),
-                ))
+            except json.JSONDecodeError:
+                logger.warning("Skipping corrupt line %d in %s", lineno, self._audit_path)
+                continue
+            if "_schema_version" in d:
+                continue
+            results.append(AuditEntry(
+                entry_id=d["entry_id"],
+                tx_id=d["tx_id"],
+                action=d["action"],
+                proposed_description=d["proposed_description"],
+                proposed_splits=[_parse_split(s) for s in d["proposed_splits"]],
+                final_description=d["final_description"],
+                final_splits=[_parse_split(s) for s in d["final_splits"]],
+                confidence=float(d["confidence"]),
+                evidence_ids=d.get("evidence_ids", []),
+                timestamp=_parse_datetime(d.get("timestamp")),
+            ))
         return results
 
     # -- feedback -------------------------------------------------------------
 
     def append_feedback(self, feedback: dict) -> None:
+        self._ensure_jsonl_header(self._feedback_path)
         line = json.dumps(feedback, cls=_Encoder) + "\n"
         with self._feedback_path.open("a", encoding="utf-8") as f:
             f.write(line)
 
     def load_feedback(self) -> list[dict]:
+        """Load all feedback events from feedback_events.jsonl."""
         if not self._feedback_path.exists():
             return []
         results = []
-        for line in self._feedback_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                results.append(json.loads(line))
+        for lineno, line in enumerate(self._feedback_path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("Skipping corrupt line %d in %s", lineno, self._feedback_path)
+                continue
+            if "_schema_version" in d:
+                continue
+            results.append(d)
         return results
 
     # -- metadata helpers -----------------------------------------------------
+
+    def _ensure_jsonl_header(self, path: Path) -> None:
+        """Write a schema version header as the first line if the file is new."""
+        if not path.exists() or path.stat().st_size == 0:
+            with path.open("w", encoding="utf-8") as f:
+                f.write(json.dumps({"_schema_version": _SCHEMA_VERSION}) + "\n")
 
     def save_metadata(self, key: str, data: dict) -> None:
         """Save arbitrary keyed metadata (e.g. gnucash_path, run_config)."""
@@ -309,6 +348,7 @@ class StateRepository:
         path.write_text(json.dumps(wrapped, cls=_Encoder, indent=2), encoding="utf-8")
 
     def load_metadata(self, key: str) -> dict | None:
+        """Load keyed metadata JSON (e.g. run_config)."""
         path = self._dir / f"{key}.json"
         if not path.exists():
             return None

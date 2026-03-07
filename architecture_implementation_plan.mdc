@@ -2,7 +2,7 @@
 
 ## Status: Implemented (v1)
 
-All modules have been implemented with full test coverage (163 tests).
+All modules have been implemented with full test coverage (198 tests).
 
 ## Package Layout
 
@@ -55,10 +55,11 @@ src/gnc_enrich/
 
 ## Dependencies
 
+- **Python 3.11+**
 - `lxml` — GnuCash XML parsing
-- `pytesseract` + `Pillow` + `pillow-heif` — Receipt OCR
+- `pytesseract` + `Pillow` + `pillow-heif` — Receipt OCR (jpg/jpeg/png/heic/heif)
 - `scikit-learn` + `joblib` — ML category prediction
-- `flask` — Review web app
+- `flask` + Jinja2 — Review web app + templates
 - `requests` — Optional LLM API calls
 
 ## Module Status
@@ -74,11 +75,11 @@ src/gnc_enrich/
 | `receipt/repository.py` | Done | ReceiptRepository: list unprocessed, move to processed with conflict naming |
 | `matching/email_matcher.py` | Done | Multi-signal scoring (amount, date proximity, text tokens) |
 | `matching/receipt_matcher.py` | Done | One-to-one matching with amount tolerance, double-match prevention |
-| `ml/predictor.py` | Done | TF-IDF + SGDClassifier, keyword fallback, optional LLM rationale, evidence-driven description enrichment, terse item lookup |
-| `review/service.py` | Done | ReviewQueueService: proposal queue, decision capture, skip persistence |
+| `ml/predictor.py` | Done | TF-IDF + SGDClassifier, keyword fallback, refund detection, optional LLM rationale, evidence-driven description enrichment, terse item lookup |
+| `review/service.py` | Done | ReviewQueueService: proposal queue, decision capture, skip persistence, evidence-driven enrichment on submit |
 | `review/webapp.py` | Done | Flask app with evidence panel, evidence approval checkboxes, approve/edit/skip controls |
 | `apply/engine.py` | Done | Dry-run report, apply with backup + audit + journal, rollback |
-| `state/repository.py` | Done | JSON/JSONL persistence for all state artifacts |
+| `state/repository.py` | Done | JSON/JSONL persistence for all state artifacts with schema version headers |
 | `services/pipeline.py` | Done | EnrichmentPipeline wiring all components end-to-end |
 | `cli.py` | Done | run/review/apply commands with LLM flags, dispatches to real implementations |
 
@@ -98,5 +99,6 @@ src/gnc_enrich/
 | `test_review.py` | 15 | Queue service logic + Flask test client routes |
 | `test_integration.py` | 3 | Full run->review->apply cycle, Flask client flow, CLI dispatch |
 | `test_cli.py` | 4 | Parser contracts, flag defaults, LLM args |
-| `test_new_features.py` | 21 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence |
-| **Total** | **163** | |
+| `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
+| `test_system.py` | 17 | Full system tests: multi-subdir emails, review cycle, apply+rollback, Flask webapp |
+| **Total** | **198** | |

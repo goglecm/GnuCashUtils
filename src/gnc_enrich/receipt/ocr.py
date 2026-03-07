@@ -83,7 +83,10 @@ class ReceiptOcrEngine:
             raise ValueError(f"Unsupported image format: {receipt_path.suffix}")
 
         img = _open_image(receipt_path)
-        ocr_text = pytesseract.image_to_string(img)
+        try:
+            ocr_text = pytesseract.image_to_string(img)
+        finally:
+            img.close()
 
         parsed_total = _extract_total(ocr_text)
         line_items = _extract_line_items(ocr_text)
@@ -130,9 +133,13 @@ class ReceiptOcrEngine:
                 "temperature": self._llm_config.temperature,
                 "max_tokens": self._llm_config.max_tokens,
             }
+            headers = {}
+            if self._llm_config.api_key:
+                headers["Authorization"] = f"Bearer {self._llm_config.api_key}"
             resp = requests.post(
                 self._llm_config.endpoint,
                 json=payload,
+                headers=headers,
                 timeout=30,
             )
             resp.raise_for_status()

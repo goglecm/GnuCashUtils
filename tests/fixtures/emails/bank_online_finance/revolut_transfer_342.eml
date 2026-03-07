@@ -1,0 +1,21 @@
+Content-Type: text/plain; charset="utf-8"
+Date: Tue, 28 Feb 2023 08:53:15 +0000
+From: "Revolut" <no-reply@revolut.com>
+To: "User" <user@example.com>
+Subject: You sent £342.25 to John Smith
+Message-ID: <rev-transfer-342@revolut.com>
+MIME-Version: 1.0
+
+Hi User,
+
+You've just sent £342.25 to John Smith.
+
+Transaction details:
+- Amount: £342.25
+- Reference: Monthly rent contribution
+- Date: 28 February 2023
+
+If you didn't make this payment, please contact us immediately.
+
+Best regards,
+Revolut Team

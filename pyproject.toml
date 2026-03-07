@@ -18,6 +18,9 @@ dependencies = [
     "requests",
 ]
 
+[project.scripts]
+gnc-enrich = "gnc_enrich.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

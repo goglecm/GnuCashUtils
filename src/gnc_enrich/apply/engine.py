@@ -9,9 +9,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from gnc_enrich.domain.models import AuditEntry, ReviewDecision, Split
+from gnc_enrich.domain.models import AuditEntry, ReviewDecision, Split, Transaction
 from gnc_enrich.gnucash.loader import GnuCashLoader, GnuCashWriter
-from gnc_enrich.matching.receipt_matcher import ReceiptMatcher
 from gnc_enrich.receipt.repository import ReceiptRepository
 from gnc_enrich.state.repository import StateRepository
 
@@ -112,6 +111,10 @@ class ApplyEngine:
 
             changes[tx_id] = {
                 "description": dec.final_description,
+                "splits": [
+                    {"account_path": sp.account_path, "amount": str(sp.amount), "memo": sp.memo}
+                    for sp in dec.final_splits
+                ],
             }
 
             original_desc = ""
@@ -147,6 +150,10 @@ class ApplyEngine:
             )
 
         journal_path = state_dir / "apply_journal.jsonl"
+        if not journal_path.exists() or journal_path.stat().st_size == 0:
+            journal_path.write_text(
+                json.dumps({"_schema_version": 1}) + "\n", encoding="utf-8"
+            )
         with journal_path.open("a", encoding="utf-8") as f:
             for entry in journal:
                 f.write(json.dumps(entry) + "\n")
@@ -155,7 +162,7 @@ class ApplyEngine:
             "Applied %d changes; journal at %s", len(approved_decisions), journal_path
         )
 
-    def rollback(self, state_dir: Path, journal_id: str | None = None) -> None:
+    def rollback(self, state_dir: Path) -> None:
         """Restore from the most recent backup."""
         state = StateRepository(state_dir)
         meta = state.load_metadata("run_config")
@@ -178,6 +185,7 @@ class ApplyEngine:
         logger.info("Rolled back %s from backup %s", gnucash_path, latest_backup)
 
     def _collect_evidence_ids(self, prop) -> list[str]:
+        """Gather evidence IDs from a proposal for the audit trail."""
         if not prop or not prop.evidence:
             return []
         ids = [e.evidence_id for e in (prop.evidence.emails or [])]
@@ -191,8 +199,12 @@ class ApplyEngine:
         approved_decisions: dict[str, ReviewDecision],
         processed_dir: Path,
         loader: GnuCashLoader,
+        amount_tolerance: float = 0.50,
     ) -> None:
+        """Move receipts whose total matches the approved transaction amount."""
         receipt_repo = ReceiptRepository()
+        tol = Decimal(str(amount_tolerance))
+
         for prop in proposals:
             if prop.tx_id not in approved_decisions:
                 continue
@@ -203,26 +215,16 @@ class ApplyEngine:
             receipt_path = Path(receipt.source_path)
             if not receipt_path.exists():
                 continue
-
-            from gnc_enrich.domain.models import Transaction, Split
-            from decimal import Decimal
+            if receipt.parsed_total is None:
+                logger.debug("Receipt %s has no parsed total; not moved", receipt_path)
+                continue
 
             dec = approved_decisions[prop.tx_id]
             tx_amount = sum(
                 sp.amount for sp in dec.final_splits if sp.amount > 0
             ) or Decimal(0)
 
-            rm = ReceiptMatcher([], amount_tolerance=0.50)
-            fake_tx = Transaction(
-                tx_id=prop.tx_id,
-                posted_date=prop.evidence.similar_transactions[0].posted_date
-                if prop.evidence.similar_transactions else __import__("datetime").date.today(),
-                description="",
-                currency="GBP",
-                amount=tx_amount,
-            )
-
-            if rm.is_amount_compatible(receipt, fake_tx):
+            if abs(receipt.parsed_total - tx_amount) <= tol:
                 receipt_repo.mark_processed(receipt_path, processed_dir)
                 logger.info("Moved compatible receipt %s", receipt_path)
             else:

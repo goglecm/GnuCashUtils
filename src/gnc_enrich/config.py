@@ -8,6 +8,8 @@ from pathlib import Path
 
 
 class LlmMode(str, Enum):
+    """LLM integration mode selection."""
+
     DISABLED = "disabled"
     OFFLINE = "offline"
     ONLINE = "online"
@@ -15,6 +17,8 @@ class LlmMode(str, Enum):
 
 @dataclass(slots=True)
 class LlmConfig:
+    """Configuration for optional LLM API integration."""
+
     mode: LlmMode = LlmMode.DISABLED
     endpoint: str = ""
     model_name: str = ""
@@ -25,6 +29,8 @@ class LlmConfig:
 
 @dataclass(slots=True)
 class RunConfig:
+    """Configuration for the pipeline run subcommand."""
+
     gnucash_path: Path
     emails_dir: Path
     receipts_dir: Path
@@ -38,6 +44,8 @@ class RunConfig:
 
 @dataclass(slots=True)
 class ApplyConfig:
+    """Configuration for the apply subcommand."""
+
     state_dir: Path
     create_backup: bool = True
     backup_dir: Path | None = None
@@ -47,6 +55,8 @@ class ApplyConfig:
 
 @dataclass(slots=True)
 class ReviewConfig:
+    """Configuration for the review web app subcommand."""
+
     state_dir: Path
     host: str = "127.0.0.1"
     port: int = 7860

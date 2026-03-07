@@ -130,8 +130,9 @@ class TestApply:
         journal_path = state_dir / "apply_journal.jsonl"
         assert journal_path.exists()
         entries = [json.loads(l) for l in journal_path.read_text().splitlines() if l.strip()]
-        assert len(entries) == 2  # only approved + edited
-        tx_ids = {e["tx_id"] for e in entries}
+        data_entries = [e for e in entries if "_schema_version" not in e]
+        assert len(data_entries) == 2  # only approved + edited
+        tx_ids = {e["tx_id"] for e in data_entries}
         assert "tx_unspec1" in tx_ids
         assert "tx_unspec2" in tx_ids
         assert "tx_imbalance1" not in tx_ids  # skipped

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class PipelineResult:
+    """Summary of a pipeline run."""
     proposal_count: int
     skipped_count: int
 
@@ -47,6 +48,7 @@ class EnrichmentPipeline:
         )
 
     def build_proposals(self, config: RunConfig) -> list[Proposal]:
+        """Load data, match evidence, and generate proposals for all candidates."""
         loader = GnuCashLoader()
         all_txs = loader.load_transactions(config.gnucash_path)
         logger.info("Loaded %d transactions from %s", len(all_txs), config.gnucash_path)
@@ -91,17 +93,32 @@ class EnrichmentPipeline:
             amount_tolerance=config.amount_tolerance,
         )
 
-        historical = [tx for tx in all_txs if tx not in candidates]
+        candidate_ids = {tx.tx_id for tx in candidates}
+        historical = [tx for tx in all_txs if tx.tx_id not in candidate_ids]
         predictor = CategoryPredictor(
             historical_transactions=historical,
             llm_config=config.llm,
         )
 
         proposals: list[Proposal] = []
-        for tx in candidates:
+        for i, tx in enumerate(candidates, 1):
+            logger.debug(
+                "Processing candidate %d/%d: tx=%s amount=£%s",
+                i, len(candidates), tx.tx_id, tx.amount,
+            )
             matched_emails = email_matcher.match(tx)
             matched_receipt = receipt_matcher.match(tx)
+            logger.debug(
+                "  Matched %d emails, receipt=%s",
+                len(matched_emails),
+                matched_receipt.evidence_id if matched_receipt else "none",
+            )
             proposal = predictor.propose(tx, matched_emails, matched_receipt)
+            logger.debug(
+                "  Proposal: category=%s confidence=%.2f",
+                proposal.suggested_splits[0].account_path if proposal.suggested_splits else "?",
+                proposal.confidence,
+            )
             proposals.append(proposal)
 
         logger.info("Generated %d proposals", len(proposals))

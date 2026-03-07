@@ -27,6 +27,7 @@ _MAX_BODY_SNIPPET = 500
 
 
 def _extract_amounts(text: str) -> list[Decimal]:
+    """Extract GBP amounts from text using regex."""
     amounts: list[Decimal] = []
     for m in _GBP_AMOUNT_RE.finditer(text):
         raw = m.group(1) or m.group(2)
@@ -39,6 +40,7 @@ def _extract_amounts(text: str) -> list[Decimal]:
 
 
 def _get_body_text(msg: email.message.EmailMessage) -> str:
+    """Extract the plain-text body from an email message."""
     body = msg.get_body(preferencelist=("plain", "html"))
     if body is None:
         return ""
@@ -52,6 +54,7 @@ class EmlParser:
     """Parses .eml files into searchable evidence records."""
 
     def parse(self, eml_path: Path) -> EmailEvidence:
+        """Parse an .eml file into an EmailEvidence record."""
         raw = eml_path.read_bytes()
         msg = email.message_from_bytes(raw, policy=email.policy.default)
 

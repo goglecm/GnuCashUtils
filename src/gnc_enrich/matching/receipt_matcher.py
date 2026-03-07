@@ -53,8 +53,9 @@ class ReceiptMatcher:
         return None
 
     def _score(self, tx: Transaction, receipt: ReceiptEvidence) -> float:
+        """Score a receipt against a transaction. Returns 0 if OCR found no total."""
         if receipt.parsed_total is None:
-            return 0.1
+            return 0.0
 
         diff = abs(receipt.parsed_total - tx.amount)
         if diff <= self._tolerance:

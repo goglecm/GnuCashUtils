@@ -8,18 +8,26 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_RECEIPT_GLOBS = ("*.jpg", "*.jpeg", "*.png", "*.heic", "*.heif")
+_RECEIPT_GLOBS = (
+    "*.jpg", "*.jpeg", "*.png", "*.heic", "*.heif",
+    "*.JPG", "*.JPEG", "*.PNG", "*.HEIC", "*.HEIF",
+)
 
 
 class ReceiptRepository:
+    """Manages receipt image files: listing unprocessed and archiving processed."""
 
     def list_unprocessed(self, receipts_dir: Path) -> list[Path]:
         """Return all receipt image files in the given directory."""
         if not receipts_dir.is_dir():
             return []
+        seen: set[Path] = set()
         files: list[Path] = []
         for pattern in _RECEIPT_GLOBS:
-            files.extend(receipts_dir.glob(pattern))
+            for f in receipts_dir.glob(pattern):
+                if f not in seen:
+                    seen.add(f)
+                    files.append(f)
         files.sort(key=lambda p: p.name)
         return files
 

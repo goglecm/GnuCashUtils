@@ -1,0 +1,33 @@
+---
+description: Testing conventions and requirements for the gnc_enrich project
+alwaysApply: true
+---
+
+# Testing Conventions
+
+## Structure
+
+- Test runner: `pytest >= 8.0`
+- Tests in `tests/` — file naming: `test_<module>.py`
+- Shared fixtures in `tests/conftest.py`
+- All I/O tests use `tmp_path`
+
+## Test Levels
+
+1. **Unit**: pure logic, matching scores, config/domain model construction.
+2. **Adapter**: GnuCash XML read/write, EML parsing, OCR with Pillow-generated images, state roundtrips.
+3. **Integration / System**: full `run → review → apply` cycle with synthetic GnuCash + emails + receipts.
+
+## Fixture Strategy
+
+- GnuCash XML: built programmatically in `conftest.py` as gzip-compressed strings.
+- Emails: synthetic `.eml` files in `tests/fixtures/emails/` (with subdirectories to test recursive scan).
+- Receipt images: generated with `Pillow ImageDraw` in test setup.
+- Never use real user data in committed fixtures.
+
+## Rules
+
+- Every new feature or bug fix must include tests.
+- Run `pytest` before every commit — all tests must pass.
+- Use `unittest.mock.patch` for LLM calls (patch `requests.post` directly, not module-level).
+- JSONL tests must verify schema version header handling.

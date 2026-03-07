@@ -1,0 +1,35 @@
+---
+description: Project specification – domain rules, inputs/outputs, and acceptance criteria for the GnuCash enrichment system
+alwaysApply: true
+---
+
+# GnuCash Enrichment Specification
+
+This project enriches unresolved GnuCash transactions (Unspecified / Imbalance-GBP) using email and receipt evidence with ML-assisted suggestions and mandatory user approval.
+
+## Domain Rules (always enforce)
+
+1. Target transactions: top-level `Unspecified` or `Imbalance-GBP` only.
+2. Only **GBP** transactions. Mixed-currency: skip entirely.
+3. Future-dated transactions: excluded.
+4. Transfers between user-owned accounts: excluded.
+5. **User approval required** per transaction before any write.
+6. User can **skip** any transaction; skips persist across runs.
+7. Descriptions are **appended to**, never overwritten.
+8. Date formatting: **DD/MM/YYYY** (GB format).
+9. Refunds → same category as original when identifiable.
+10. Not all transactions have emails; not all emails have transactions.
+11. Receipts may often be absent entirely.
+12. New categories are allowed and written to the GnuCash file.
+13. Evidence approval drives description enrichment.
+
+## Inputs
+
+- `--gnucash-path`: gzip-compressed XML `.gnucash` file (`lxml`).
+- `--emails-dir`: directory of `.eml` files, **recursively scanned** (subdirs per category).
+- `--receipts-dir`: images (`jpg/jpeg/png/heic/heif`).
+- `--state-dir` (required): JSON/JSONL state persistence.
+
+## Key Tech Stack
+
+Python 3.11+ · lxml · pytesseract + Pillow + pillow-heif · scikit-learn · Flask + Jinja2 · requests (optional LLM)

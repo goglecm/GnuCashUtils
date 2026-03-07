@@ -39,11 +39,23 @@ def _text(el: etree._Element | None) -> str:
 
 
 def _parse_fraction(value_str: str) -> Decimal:
-    """Parse GnuCash fraction like '1500/100' -> Decimal('15.00')."""
-    if "/" in value_str:
-        num, denom = value_str.split("/")
-        return Decimal(num) / Decimal(denom)
-    return Decimal(value_str)
+    """Parse GnuCash fraction like '1500/100' -> Decimal('15.00').
+
+    Handles malformed values gracefully by returning Decimal(0) and logging
+    a warning rather than crashing on corrupt GnuCash data.
+    """
+    try:
+        if "/" in value_str:
+            parts = value_str.split("/", maxsplit=1)
+            num, denom = Decimal(parts[0]), Decimal(parts[1])
+            if denom == 0:
+                logger.warning("Zero denominator in fraction: %s", value_str)
+                return Decimal(0)
+            return num / denom
+        return Decimal(value_str)
+    except Exception:
+        logger.warning("Unparseable split value: %s", value_str)
+        return Decimal(0)
 
 
 def _parse_date(date_el: etree._Element | None) -> date:
@@ -61,12 +73,14 @@ def _parse_date(date_el: etree._Element | None) -> date:
 
 
 def _is_gzip(path: Path) -> bool:
+    """Check if a file is gzip-compressed by reading its magic bytes."""
     with open(path, "rb") as f:
         magic = f.read(2)
     return magic == b"\x1f\x8b"
 
 
 def _parse_tree(source: Path) -> etree._ElementTree:
+    """Parse a GnuCash XML file, handling both gzip and plain XML."""
     if _is_gzip(source):
         with gzip.open(source, "rb") as f:
             return etree.parse(f)
@@ -99,9 +113,11 @@ class GnuCashLoader:
         return list(self._accounts.values())
 
     def get_account_path(self, account_id: str) -> str:
+        """Return the colon-separated path for an account ID."""
         return self._account_paths.get(account_id, "")
 
     def get_tree(self) -> etree._ElementTree | None:
+        """Return the parsed lxml ElementTree, or None if not yet loaded."""
         return self._tree
 
     def filter_candidates(
@@ -134,6 +150,8 @@ class GnuCashLoader:
     def _build_account_map(self, book: etree._Element) -> None:
         self._accounts.clear()
         self._account_paths.clear()
+        if hasattr(self, "_path_to_account"):
+            del self._path_to_account
 
         for acct_el in book.findall("gnc:account", _NS):
             acct_id = _text(acct_el.find("act:id", _NS))
@@ -228,10 +246,12 @@ class GnuCashLoader:
         return transactions
 
     def _find_account_by_path(self, path: str) -> Account | None:
-        for acct in self._accounts.values():
-            if acct.full_path == path:
-                return acct
-        return None
+        """Look up an account by its colon-separated path (uses cached reverse map)."""
+        if not hasattr(self, "_path_to_account"):
+            self._path_to_account: dict[str, Account] = {
+                acct.full_path: acct for acct in self._accounts.values()
+            }
+        return self._path_to_account.get(path)
 
     def _has_target_account(self, tx: Transaction) -> bool:
         for sp in tx.splits:
@@ -283,13 +303,22 @@ class GnuCashWriter:
         if book is None:
             raise ValueError("No <gnc:book> element found")
 
+        loader = GnuCashLoader()
+        loader._accounts = {}
+        loader._account_paths = {}
+        loader._build_account_map(book)
+
         new_categories: set[str] = set()
         for change in changes.values():
             for sp in change.get("splits", []):
                 new_categories.add(sp["account_path"])
 
         if new_categories:
-            self._ensure_accounts_exist(book, new_categories)
+            self._ensure_accounts_exist(book, new_categories, loader)
+
+        account_guid_by_path: dict[str, str] = {
+            acct.full_path: aid for aid, acct in loader._accounts.items()
+        }
 
         for trn_el in book.findall("gnc:transaction", _NS):
             tx_id = _text(trn_el.find("trn:id", _NS))
@@ -303,6 +332,28 @@ class GnuCashWriter:
                 if desc_el is not None:
                     desc_el.text = change["description"]
 
+            if "splits" in change:
+                splits_el = trn_el.find("trn:splits", _NS)
+                if splits_el is not None:
+                    for sp_change in change["splits"]:
+                        target_guid = account_guid_by_path.get(sp_change["account_path"])
+                        if not target_guid:
+                            continue
+                        for sp_el in splits_el.findall("trn:split", _NS):
+                            acct_el = sp_el.find("split:account", _NS)
+                            if acct_el is None:
+                                continue
+                            acct_path = loader._account_paths.get(_text(acct_el), "")
+                            top = acct_path.split(":")[0] if acct_path else ""
+                            if top in _TARGET_ACCOUNTS:
+                                acct_el.text = target_guid
+                                if sp_change.get("memo"):
+                                    memo_el = sp_el.find("split:memo", _NS)
+                                    if memo_el is None:
+                                        memo_el = etree.SubElement(sp_el, "{%s}memo" % _NS["split"])
+                                    memo_el.text = sp_change["memo"]
+                                break
+
         output = source if in_place else source.with_suffix(".enriched.gnucash")
 
         xml_bytes = etree.tostring(tree, xml_declaration=True, encoding="utf-8")
@@ -313,23 +364,10 @@ class GnuCashWriter:
         return output
 
     def _ensure_accounts_exist(
-        self, book: etree._Element, category_paths: set[str]
+        self, book: etree._Element, category_paths: set[str], loader: GnuCashLoader
     ) -> None:
         """Create new account elements for category paths that don't exist yet."""
-        existing: set[str] = set()
-        account_ids: dict[str, str] = {}
-
-        for acct_el in book.findall("gnc:account", _NS):
-            acct_id = _text(acct_el.find("act:id", _NS))
-            name = _text(acct_el.find("act:name", _NS))
-            account_ids[name] = acct_id
-
-        loader = GnuCashLoader()
-        loader._accounts = {}
-        loader._account_paths = {}
-        loader._build_account_map(book)
-        for acct in loader._accounts.values():
-            existing.add(acct.full_path)
+        existing: set[str] = {acct.full_path for acct in loader._accounts.values()}
 
         for cat_path in category_paths:
             if cat_path in existing:

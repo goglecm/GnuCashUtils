@@ -61,7 +61,7 @@ src/gnc_enrich/          # Main package
   apply/engine.py        # Apply, backup, rollback, audit
   state/repository.py    # JSON/JSONL state persistence
   services/pipeline.py   # High-level orchestration
-tests/                   # Test suite (163 tests)
+tests/                   # Test suite (198 tests)
   conftest.py            # Shared fixtures (sample GnuCash XML)
   fixtures/emails/       # Sample .eml files
 ```
@@ -115,4 +115,4 @@ LLM is used in two places:
 - Import errors: ensure `pip install -e ".[dev]"` was run.
 - Missing pytest: install with `pip install pytest`.
 - Tesseract not found: install the system package (see System Dependencies above).
-- Bytecode clutter: `find . -type d -name '__pycache__' -prune -exec rm -rf {} +`.
+- Bytecode clutter: `make clean`.

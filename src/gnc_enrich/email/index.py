@@ -14,8 +14,11 @@ from gnc_enrich.email.parser import EmlParser
 
 logger = logging.getLogger(__name__)
 
+_SCHEMA_VERSION = 1
+
 
 def _serialize_evidence(ev: EmailEvidence) -> dict[str, Any]:
+    """Convert an EmailEvidence to a JSON-serializable dict."""
     return {
         "evidence_id": ev.evidence_id,
         "message_id": ev.message_id,
@@ -30,6 +33,7 @@ def _serialize_evidence(ev: EmailEvidence) -> dict[str, Any]:
 
 
 def _deserialize_evidence(d: dict) -> EmailEvidence:
+    """Reconstruct an EmailEvidence from a JSON dict."""
     return EmailEvidence(
         evidence_id=d["evidence_id"],
         message_id=d["message_id"],
@@ -62,9 +66,23 @@ class EmailIndexRepository:
             self._indexed_files = set(manifest.get("indexed_files", []))
 
         if index_path.exists():
-            for line in index_path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    self._entries.append(_deserialize_evidence(json.loads(line)))
+            for lineno, line in enumerate(index_path.read_text(encoding="utf-8").splitlines(), 1):
+                if not line.strip():
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping corrupt line %d in %s", lineno, index_path)
+                    continue
+                if "_schema_version" in d:
+                    continue
+                self._entries.append(_deserialize_evidence(d))
+
+        if not index_path.exists() or index_path.stat().st_size == 0:
+            index_path.write_text(
+                json.dumps({"_schema_version": _SCHEMA_VERSION}) + "\n",
+                encoding="utf-8",
+            )
 
         new_count = 0
         eml_files = sorted(emails_dir.rglob("*.eml"))
@@ -82,7 +100,7 @@ class EmailIndexRepository:
                 except Exception:
                     logger.warning("Failed to parse %s, skipping", eml_path, exc_info=True)
 
-        manifest_data = {"indexed_files": sorted(self._indexed_files)}
+        manifest_data = {"_schema_version": _SCHEMA_VERSION, "indexed_files": sorted(self._indexed_files)}
         manifest_path.write_text(json.dumps(manifest_data, indent=2), encoding="utf-8")
         logger.info(
             "Email index: %d total entries (%d new)", len(self._entries), new_count

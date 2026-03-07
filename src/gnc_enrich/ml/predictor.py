@@ -10,8 +10,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from gnc_enrich.config import LlmConfig, LlmMode
 from gnc_enrich.domain.models import (
     EmailEvidence,
@@ -97,12 +95,20 @@ class CategoryPredictor:
         emails: list[EmailEvidence],
         receipt: ReceiptEvidence | None,
     ) -> Proposal:
+        """Generate a Proposal with category, description, and evidence for a transaction."""
         text = self._featurize_text(tx, emails, receipt)
         suggested_category = ""
         confidence = 0.0
         rationale_parts: list[str] = []
 
-        if self._trained and self._vectorizer and self._classifier:
+        refund_category = self._check_refund_match(tx)
+        if refund_category:
+            suggested_category = refund_category
+            confidence = 0.65
+            rationale_parts.append(
+                f"Refund detected (negative amount); matched to '{refund_category}'"
+            )
+        elif self._trained and self._vectorizer and self._classifier:
             X = self._vectorizer.transform([text])
             proba = self._classifier.predict_proba(X)[0]
             best_idx = proba.argmax()
@@ -150,6 +156,18 @@ class CategoryPredictor:
             ),
         )
 
+    def _check_refund_match(self, tx: Transaction) -> str | None:
+        """If tx looks like a refund (negative amount), find the original category."""
+        if tx.amount >= 0 or not self._trained:
+            return None
+        text = self._featurize_text(tx)
+        X = self._vectorizer.transform([text])
+        proba = self._classifier.predict_proba(X)[0]
+        best_idx = proba.argmax()
+        if proba[best_idx] >= 0.4:
+            return self._classes[best_idx]
+        return None
+
     def _fallback_category(
         self, tx: Transaction, emails: list[EmailEvidence]
     ) -> str:
@@ -174,6 +192,7 @@ class CategoryPredictor:
         emails: list[EmailEvidence],
         receipt: ReceiptEvidence | None,
     ) -> str:
+        """Build the suggested description from transaction data and evidence."""
         date_str = tx.posted_date.strftime("%d/%m/%Y")
         base = tx.description.strip()
 
@@ -251,6 +270,8 @@ class CategoryPredictor:
 
         terse_names = [it.description for it in receipt.line_items]
         try:
+            import requests
+
             payload = {
                 "model": self._llm_config.model_name,
                 "messages": [
@@ -267,7 +288,10 @@ class CategoryPredictor:
                 "temperature": self._llm_config.temperature,
                 "max_tokens": self._llm_config.max_tokens,
             }
-            resp = requests.post(self._llm_config.endpoint, json=payload, timeout=30)
+            headers = {}
+            if self._llm_config.api_key:
+                headers["Authorization"] = f"Bearer {self._llm_config.api_key}"
+            resp = requests.post(self._llm_config.endpoint, json=payload, headers=headers, timeout=30)
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"].strip()
             expanded = json.loads(content)
@@ -285,7 +309,10 @@ class CategoryPredictor:
         receipt: ReceiptEvidence | None,
         current_suggestion: str,
     ) -> str | None:
+        """Query the LLM for a category suggestion when ML confidence is low."""
         try:
+            import requests
+
             evidence_text = f"Transaction: {tx.description}, £{tx.amount}, {tx.posted_date}"
             if emails:
                 evidence_text += f"\nTop email from: {emails[0].sender}, subject: {emails[0].subject}"
@@ -307,7 +334,10 @@ class CategoryPredictor:
                 "temperature": self._llm_config.temperature,
                 "max_tokens": 100,
             }
-            resp = requests.post(self._llm_config.endpoint, json=payload, timeout=30)
+            headers = {}
+            if self._llm_config.api_key:
+                headers["Authorization"] = f"Bearer {self._llm_config.api_key}"
+            resp = requests.post(self._llm_config.endpoint, json=payload, headers=headers, timeout=30)
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"].strip()
         except Exception:
@@ -327,6 +357,7 @@ class FeedbackTrainer:
         accepted: bool,
         note: str = "",
     ) -> None:
+        """Record a user feedback event to the state store."""
         feedback = {
             "proposal_id": proposal.proposal_id,
             "tx_id": proposal.tx_id,
