@@ -1,0 +1,98 @@
+# GnuCash Enrichment Implementation Architecture (Skeleton Plan)
+
+## Goal
+Provide a concrete module/class/script layout so multiple agents can implement in parallel with minimal merge conflicts.
+
+## Package Layout
+
+```text
+src/gnc_enrich/
+  __init__.py
+  __main__.py
+  cli.py
+  config.py
+  domain/models.py
+  gnucash/loader.py
+  email/parser.py
+  email/index.py
+  receipt/ocr.py
+  receipt/repository.py
+  matching/email_matcher.py
+  matching/receipt_matcher.py
+  ml/predictor.py
+  review/service.py
+  review/webapp.py
+  apply/engine.py
+  state/repository.py
+  services/pipeline.py
+```
+
+## Responsibilities & Contracts
+
+### `gnc_enrich.config`
+- `RunConfig`, `ReviewConfig`, `ApplyConfig`: immutable runtime config shapes shared by all flows.
+
+### `gnc_enrich.domain.models`
+- Core DTO/dataclasses:
+  - `Transaction`, `Split`
+  - `EmailEvidence`, `ReceiptEvidence`
+  - `Proposal`, `ReviewDecision`
+- Keeps adapters and services decoupled from storage details.
+
+### `gnc_enrich.gnucash.loader`
+- `GnuCashLoader`: read XML/SQLite files to canonical `Transaction` objects.
+- `GnuCashWriter`: backup/write changes (in-place or output copy).
+
+### `gnc_enrich.email.*`
+- `EmlParser`: parse raw `.eml` into structured evidence.
+- `EmailIndexRepository`: persistent index for fast evidence retrieval and incremental updates.
+
+### `gnc_enrich.receipt.*`
+- `ReceiptOcrEngine`: OCR extraction and totals parsing for jpg/jpeg/heic.
+- `ReceiptRepository`: list pending receipts and move approved ones to processed directory.
+
+### `gnc_enrich.matching.*`
+- `EmailMatcher`: windowed date/amount/text match scoring.
+- `ReceiptMatcher`: one-to-one receipt matching with conflict safeguards.
+
+### `gnc_enrich.ml.predictor`
+- `CategoryPredictor`: generate category/split/description proposals + confidence/rationale.
+- `FeedbackTrainer`: record final decisions for model refinement.
+
+### `gnc_enrich.review.*`
+- `ReviewQueueService`: one-by-one proposal feed and decision capture.
+- `ReviewWebApp`: framework adapter for local review UI runtime.
+
+### `gnc_enrich.state.repository`
+- Persist/load proposals, decisions, skips, and other state artifacts.
+
+### `gnc_enrich.apply.engine`
+- Dry-run report generation.
+- Apply approved decisions.
+- Rollback using journal entries.
+
+### `gnc_enrich.services.pipeline`
+- High-level orchestration:
+  1. Load transactions
+  2. Filter candidates
+  3. Build evidence
+  4. Run inference
+  5. Persist proposals
+
+### `gnc_enrich.cli` and `__main__`
+- CLI command surface:
+  - `run`
+  - `review`
+  - `apply`
+
+## Script/Agent Ownership Suggestion
+1. **Agent A (I/O)**: `gnucash/*`, `email/*`, `receipt/*`.
+2. **Agent B (Matching+ML)**: `matching/*`, `ml/*`.
+3. **Agent C (Workflow/UI)**: `review/*`, `services/pipeline.py`, `state/*`, `apply/*`.
+4. **Agent D (CLI & integration)**: `cli.py`, wiring, docs updates.
+
+## Minimal Completion Criteria for Next Iteration
+- Replace `NotImplementedError` stubs with concrete adapters.
+- Wire dependency injection in `services/pipeline.py`.
+- Add integration tests for run/review/apply happy paths.
+- Add schema/versioning for persistent state files.

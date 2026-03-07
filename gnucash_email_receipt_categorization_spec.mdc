@@ -1,0 +1,329 @@
+# GnuCash Transaction Enrichment & User-Approved Categorization Specification (v1)
+
+## 1. Purpose
+Build a Python-based, local-first system that processes a GnuCash file plus evidence sources (emails and receipts) to help the user resolve transactions currently under top-level categories **`Unspecified`** or **`Imbalance-GBP`**.
+
+The system must:
+- Propose transaction category and description updates.
+- Support split transactions (including receipt-driven splits).
+- Use historical transaction data and ML/AI-assisted inference.
+- Present evidence for every proposed edit.
+- Require explicit **user approval per transaction** before writing.
+- Allow user override for categories, split structure, and description.
+- Skip non-GBP and future transactions.
+
+---
+
+## 2. Scope
+
+### In Scope
+- Input GnuCash formats: **XML (`.gnucash`) and SQLite**.
+- Email ingestion from directory of `.eml` files.
+- Receipt ingestion from directory of images: **`jpeg` / `jpg` / `heic`**.
+- Matching transactions with evidence windows around transaction date.
+- ML/AI-assisted category predictions and confidence scoring.
+- One-by-one review workflow in a local web application.
+- Dry-run and apply modes.
+- Audit logging, backup points, undo capability.
+- Persistence of indexed evidence and user feedback.
+
+### Out of Scope (v1)
+- Drag-and-drop UX.
+- Bulk approval UX.
+- Non-GBP transaction editing.
+- Future-dated transaction editing.
+
+---
+
+## 3. Key Domain Rules
+
+1. **Target transactions** are those assigned to top-level categories:
+   - `Unspecified`
+   - `Imbalance-GBP`
+2. **Only GBP transactions** are eligible.
+   - Mixed-currency transaction: **skip entirely**.
+3. **Future transactions are excluded**.
+4. **Transfers between user-owned accounts are excluded** from recategorization.
+5. **User approval required per transaction** before any write.
+6. **User can skip** any transaction.
+7. Skipped transactions are persisted and excluded in subsequent runs, with an option to reload/reconsider later.
+8. Existing non-empty description should be **appended to**, not overwritten.
+9. Description date formatting must use **GB format** (`DD/MM/YYYY`).
+10. Refunds should be categorized to the **same category as the original transaction** when identifiable.
+
+---
+
+## 4. Inputs & Outputs
+
+## 4.1 Inputs
+- `--gnucash-path`: path to input GnuCash file (XML or SQLite).
+- `--emails-dir`: directory containing `.eml` files.
+- `--receipts-dir`: directory containing receipt images (`jpeg|jpg|heic`).
+- `--processed-receipts-dir`: destination directory for approved/matched receipts.
+- Optional: `--state-dir` for indexes/cache/audit metadata.
+
+## 4.2 Outputs
+- Updated GnuCash file (in-place by default, optional copy mode).
+- Backup snapshot(s) before write.
+- Audit trail (structured JSONL + optional human-readable report).
+- Persisted indexes:
+  - email index
+  - receipt OCR index
+  - model features/inference cache
+  - skipped transaction state
+  - user feedback/training data
+- Dry-run proposal report.
+
+---
+
+## 5. Configuration
+
+User-configurable parameters must include at least:
+- Email date window: default `±7 days`.
+- Amount tolerance for evidence matching (e.g., ±0.50 GBP or configurable percent/absolute).
+- Minimum confidence thresholds for auto-proposal display tiers.
+- Backup policy (on/off + retention count/location).
+- Skip-list behavior (exclude by default, include with explicit flag).
+- LLM integration mode:
+  - offline/local model
+  - online model endpoint
+  - disabled
+
+---
+
+## 6. System Architecture
+
+## 6.1 Components
+1. **GnuCash Loader/Writer**
+   - Detect XML vs SQLite.
+   - Parse accounts, splits, transactions, currencies.
+   - Validate and apply approved mutations.
+2. **Candidate Selector**
+   - Select only unresolved target transactions.
+   - Enforce GBP-only, non-future, non-transfer constraints.
+3. **Email Pipeline**
+   - Parse `.eml` metadata and body.
+   - Build index optimized for amount/date/merchant/entity retrieval.
+4. **Receipt Pipeline**
+   - OCR receipts and detect line items/totals.
+   - Match one receipt to one transaction.
+5. **Feature & Evidence Builder**
+   - Build evidence packets from emails, receipts, history.
+6. **ML/AI Suggestion Engine**
+   - Category prediction + confidence score + rationale snippets.
+   - Description proposal in GB date style.
+7. **Review Web App**
+   - One transaction at a time review.
+   - Evidence display, edit controls, approve/skip.
+8. **Apply Engine**
+   - Dry-run report or write mode with backup + audit.
+9. **Feedback & Learning Store**
+   - Capture user overrides and approvals for retraining/improved ranking.
+
+---
+
+## 7. Evidence Acquisition & Matching
+
+## 7.1 Email Matching
+- Use transaction date with configurable window (default ±7 days).
+- Recognize that bank posting may lag 1–4 days from purchase/authorization.
+- Match signals include:
+  - amount references (high priority)
+  - sender domain/name
+  - subject tokens
+  - body tokens (merchant/order/keywords)
+  - memo/description proximity
+- Allow user-configurable minor amount tolerance.
+- If multiple emails match one transaction, include **all** as evidence and rank by relevance.
+
+## 7.2 Email Indexing
+- Must support large volumes (~70k emails) efficiently.
+- Persist index for reuse across runs.
+- Provide incremental rebuild options if new emails appear.
+
+## 7.3 Receipt Matching & OCR
+- Supported input types: jpg/jpeg/heic.
+- OCR should prioritize high-accuracy extraction on low-legibility documents.
+- One receipt may match only one transaction.
+- If approved and receipt/transaction totals are compatible:
+  - apply decision
+  - move receipt to processed directory.
+- If totals materially mismatch:
+  - present receipt as evidence,
+  - **do not move** receipt.
+
+## 7.4 Split Inference from Receipts
+- Detect line items and group multiple same-category items into single split buckets.
+- Discounts may be present and should be proportionally or explicitly allocated according to extracted structure.
+- User can edit splits as fixed amounts or percentages.
+
+---
+
+## 8. Prediction & Intelligence Requirements
+
+1. Must use **ML or more sophisticated AI approach** (not rules-only).
+2. Historical categorized transactions are mandatory training/context source.
+3. Confidence score required for each proposed category/split.
+4. Show model rationale/evidence links to user.
+5. Optional LLM “opinion/evidence synthesis” is allowed (online or offline), but system remains local-first and operable offline.
+6. User decisions (approve/edit/override/skip) must be captured for future learning.
+
+---
+
+## 9. Review UX (Web App)
+
+## 9.1 Review Unit
+- Exactly one transaction at a time.
+
+## 9.2 Required Transaction View
+- Core transaction details (date, amount, account, current split/category).
+- Evidence panel:
+  - matched emails (all candidates + relevance rank)
+  - matched receipt OCR summary + source image preview/path
+  - similar historical transactions
+  - model confidence and rationale
+
+## 9.3 User Actions
+- Approve as-is.
+- Edit description.
+- Edit category.
+- Edit/add/remove splits.
+- Adjust split amounts by amount or percentage.
+- Skip transaction.
+- Mark for later reconsideration (reloadable from skipped pool).
+
+## 9.4 Approval Requirement
+- No transaction may be written unless explicitly approved.
+
+---
+
+## 10. Write, Backup, Undo, and Audit
+
+## 10.1 Modes
+- `dry-run`: produce proposals + evidence + diffs only.
+- `apply`: write approved changes.
+
+## 10.2 Backup
+- Backup point must be created before any apply operation.
+- Backup policy configurable (location and retention).
+
+## 10.3 Undo
+- Maintain an edit journal sufficient to rollback applied session changes.
+
+## 10.4 Audit Log
+For every candidate and final action, capture:
+- transaction ID
+- proposed vs final values
+- evidence references used
+- confidence values
+- user action (approve/edit/skip)
+- timestamps
+
+---
+
+## 11. Performance & Capacity Targets
+
+Given expected scale:
+- ~100k+ transactions
+- ~70k emails
+- <50 receipts per batch
+
+Design goals:
+- Prioritize **match quality over raw speed**.
+- Use indexing/caching to keep review startup practical.
+- Keep workspace footprint under **50GB**.
+
+---
+
+## 12. CLI Contract (Initial)
+
+Example command surface (illustrative):
+
+```bash
+python -m gnc_enrich run \
+  --gnucash-path /path/books.gnucash \
+  --emails-dir /path/eml \
+  --receipts-dir /path/receipts \
+  --processed-receipts-dir /path/receipts_processed \
+  --state-dir /path/state \
+  --date-window-days 7 \
+  --amount-tolerance 0.50 \
+  --mode dry-run
+```
+
+```bash
+python -m gnc_enrich review --state-dir /path/state --host 127.0.0.1 --port 7860
+```
+
+```bash
+python -m gnc_enrich apply --state-dir /path/state --create-backup --backup-dir /path/backups
+```
+
+Notes:
+- CLI-only input orchestration (no drag-drop).
+- Review is web-based but locally hosted.
+
+---
+
+## 13. Data Persistence (State)
+
+Persist at least:
+- `email_index.*`
+- `receipt_index.*`
+- `candidate_transactions.*`
+- `proposals.*`
+- `skip_state.*`
+- `feedback_events.*`
+- `audit_log.jsonl`
+- `apply_journal.*`
+
+State should be versioned for forward migration.
+
+---
+
+## 14. Conflict & Ambiguity Handling
+
+1. If evidence conflicts (e.g., email vs history), show all evidence and confidence breakdown to user.
+2. If confidence is low or no reliable match, default recommendation is **Skip with reason**.
+3. Multiple emails for one transaction are expected and must be visible.
+4. Refund handling should attempt original transaction linkage; if unresolved, present best evidence and require user decision.
+
+---
+
+## 15. Acceptance Criteria (v1)
+
+A v1 implementation is acceptable when:
+1. It can ingest XML and SQLite GnuCash files.
+2. It filters only valid target transactions per domain rules.
+3. It parses/indexes large `.eml` sets and reuses index.
+4. It processes jpg/jpeg/heic receipts with OCR and transaction matching.
+5. It supports split proposal/editing and grouped-category receipt items.
+6. It provides ML/AI-based category suggestions with confidence.
+7. It provides one-by-one web review with full evidence panel.
+8. No change is written without explicit user approval.
+9. Dry-run and apply flows both work.
+10. Apply creates backups, audit log, and rollback journal.
+11. Approved receipts are moved to processed directory only when amount-compatible; mismatched-total receipts are not moved.
+12. Skipped transactions persist and can be reloaded later.
+13. Description appends follow GB date formatting.
+14. Workspace storage remains controlled and configurable for <50GB total.
+
+---
+
+## 16. Non-Functional Requirements
+
+- Local-first and offline-capable by default.
+- Optional online/offline LLM integration.
+- Deterministic, reproducible proposal generation when model settings are fixed.
+- Robust error handling and resumable operations.
+- Clear logs suitable for debugging and compliance review.
+
+---
+
+## 17. Future Enhancements (Post-v1)
+
+- Active learning queue prioritization.
+- Merchant normalization knowledge base.
+- Better refund-chain reconstruction.
+- Optional keyboard-driven power review mode.
+- Semi-automated confidence-gated pre-approval queue (still user-confirmed final write).
