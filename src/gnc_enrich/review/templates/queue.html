@@ -3,7 +3,7 @@
 {% block content %}
 
 <p style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;">
-    {{ expense_proposals|length }} to categorise (expenses: Unspecified/Imbalance-GBP), {{ transfer_proposals|length }} transfers — {{ total }} total proposals. {{ pending }} pending.
+    Only Unspecified/Imbalance-GBP transactions are shown. {{ expense_proposals|length }} to categorise (expenses), {{ transfer_proposals|length }} likely transfers (one leg to own account) — {{ total }} total. {{ pending }} pending. Settled transfers (both legs already to bank/asset) are not listed.
 </p>
 
 <div class="card">
@@ -41,7 +41,7 @@
 </div>
 
 <div class="card">
-    <h2>Transfers (own accounts)</h2>
+    <h2>Likely transfers (one leg Unspecified/Imbalance)</h2>
     {% for p in transfer_proposals %}
     <div class="queue-item" style="flex-direction:column;align-items:stretch;gap:0.25rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -64,7 +64,7 @@
     </div>
     {% endfor %}
     {% if not transfer_proposals %}
-    <p style="color:var(--muted);">No transfer proposals.</p>
+    <p style="color:var(--muted);">No likely transfers.</p>
     {% endif %}
 </div>
 

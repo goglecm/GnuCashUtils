@@ -96,29 +96,31 @@ class TestCandidateFiltering:
         ids = {c.tx_id for c in candidates}
         assert "tx_future" not in ids
 
-    def test_excludes_transfers_when_requested(self, sample_gnucash_path: Path) -> None:
+    def test_excludes_settled_transfers(self, sample_gnucash_path: Path) -> None:
+        """Settled transfers (both legs to bank/asset) are never candidates."""
         loader = GnuCashLoader()
         txs = loader.load_transactions(sample_gnucash_path)
-        candidates = loader.filter_candidates(txs, include_transfers=False)
+        candidates = loader.filter_candidates(txs)
         ids = {c.tx_id for c in candidates}
         assert "tx_transfer" not in ids
 
-    def test_includes_transfers_in_separate_queue_by_default(self, sample_gnucash_path: Path) -> None:
+    def test_unsettled_transfers_marked_for_transfer_queue(self, sample_gnucash_path: Path) -> None:
+        """Transactions with one leg Unspecified/Imbalance and one to own account are is_transfer=True."""
         loader = GnuCashLoader()
         txs = loader.load_transactions(sample_gnucash_path)
-        candidates = loader.filter_candidates(txs, include_transfers=True)
+        candidates = loader.filter_candidates(txs)
         ids = {c.tx_id for c in candidates}
-        assert "tx_transfer" in ids
-        transfer = next(c for c in candidates if c.tx_id == "tx_transfer")
-        assert transfer.is_transfer is True
-        expense = next(c for c in candidates if c.tx_id != "tx_transfer")
-        assert expense.is_transfer is False
+        assert "tx_unspec1" in ids
+        unsettled = next(c for c in candidates if c.tx_id == "tx_unspec1")
+        assert unsettled.is_transfer is True
+        assert getattr(unsettled, "is_unsettled_transfer", False) is True
 
     def test_candidate_count(self, sample_gnucash_path: Path) -> None:
+        """Only Unspecified/Imbalance-GBP; settled transfer excluded → 3 candidates."""
         loader = GnuCashLoader()
         txs = loader.load_transactions(sample_gnucash_path)
-        candidates = loader.filter_candidates(txs, include_transfers=True)
-        assert len(candidates) == 4
+        candidates = loader.filter_candidates(txs)
+        assert len(candidates) == 3
 
     def test_skipped_ids_excluded(self, sample_gnucash_path: Path) -> None:
         loader = GnuCashLoader()
@@ -126,7 +128,7 @@ class TestCandidateFiltering:
         candidates = loader.filter_candidates(txs, skipped_ids={"tx_unspec1"})
         ids = {c.tx_id for c in candidates}
         assert "tx_unspec1" not in ids
-        assert len(candidates) == 3
+        assert len(candidates) == 2
 
     def test_include_skipped(self, sample_gnucash_path: Path) -> None:
         loader = GnuCashLoader()
@@ -136,6 +138,16 @@ class TestCandidateFiltering:
         )
         ids = {c.tx_id for c in candidates}
         assert "tx_unspec1" in ids
+        assert len(candidates) == 3
+
+    def test_settled_transfer_not_unsettled(self, sample_gnucash_path: Path) -> None:
+        """Settled transfer (both legs to bank/asset) is excluded and _is_unsettled_transfer returns False."""
+        loader = GnuCashLoader()
+        txs = loader.load_transactions(sample_gnucash_path)
+        candidates = loader.filter_candidates(txs)
+        assert "tx_transfer" not in {c.tx_id for c in candidates}
+        tx_transfer = next(t for t in txs if t.tx_id == "tx_transfer")
+        assert loader._is_unsettled_transfer(tx_transfer) is False
 
     def test_has_target_account_matches_any_path_segment(self) -> None:
         """Unspecified/Imbalance-GBP under parent (e.g. Expenses:Unspecified) must count as candidate."""
@@ -162,6 +174,25 @@ class TestCandidateFiltering:
         assert loader._has_target_account(tx_unspec_under_expenses) is True
         assert loader._has_target_account(tx_imbalance_nested) is True
         assert loader._has_target_account(tx_food_not_target) is False
+
+    def test_three_splits_with_one_target_not_unsettled_transfer(self, sample_gnucash_path: Path) -> None:
+        """Only 2-split transactions (one target, one own account) are marked unsettled transfer."""
+        loader = GnuCashLoader()
+        loader.load_transactions(sample_gnucash_path)
+        tx_three = Transaction(
+            tx_id="t3",
+            posted_date=date(2025, 1, 1),
+            description="Split payment",
+            currency="GBP",
+            amount=Decimal("50.00"),
+            splits=[
+                Split(account_path="Current Account", amount=Decimal("-50.00"), memo=""),
+                Split(account_path="Unspecified", amount=Decimal("25.00"), memo=""),
+                Split(account_path="Expenses:Food", amount=Decimal("25.00"), memo=""),
+            ],
+        )
+        assert loader._has_target_account(tx_three) is True
+        assert loader._is_unsettled_transfer(tx_three) is False
 
 
 class TestGnuCashWriter:

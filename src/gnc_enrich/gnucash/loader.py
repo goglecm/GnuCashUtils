@@ -127,14 +127,14 @@ class GnuCashLoader:
         *,
         include_skipped: bool = False,
         skipped_ids: set[str] | None = None,
-        include_transfers: bool = True,
     ) -> list[Transaction]:
-        """Filter to actionable target transactions (expenses and optionally transfers).
+        """Filter to transactions that need categorisation (Unspecified/Imbalance-GBP only).
 
-        Expense candidates: any transaction with at least one split to an account
-        whose path contains \"Unspecified\" or \"Imbalance-GBP\" as a segment
-        (e.g. Expenses:Unspecified or Assets:Imbalance-GBP). Transfers (all splits
-        to asset/bank/liability) are included only when *include_transfers* is True.
+        Only transactions with at least one split to Unspecified or Imbalance-GBP
+        are included. \"Settled\" transfers (all splits to bank/asset/liability)
+        are excluded so they do not appear in the review queue. When a transaction
+        has exactly one split to Unspecified/Imbalance and one to an own account
+        (bank/asset), it is marked is_unsettled_transfer=True for the transfer queue.
         """
         today = date.today()
         skipped = skipped_ids or set()
@@ -147,14 +147,14 @@ class GnuCashLoader:
                 continue
             if tx.currency != "GBP":
                 continue
-            is_transfer = self._is_transfer(tx)
-            if is_transfer:
-                if include_transfers:
-                    candidates.append(dataclasses.replace(tx, is_transfer=True))
+            if self._is_transfer(tx):
                 continue
             if not self._has_target_account(tx):
                 continue
-            candidates.append(dataclasses.replace(tx, is_transfer=False))
+            is_unsettled = self._is_unsettled_transfer(tx)
+            candidates.append(dataclasses.replace(
+                tx, is_transfer=is_unsettled, is_unsettled_transfer=is_unsettled
+            ))
 
         return candidates
 
@@ -273,7 +273,7 @@ class GnuCashLoader:
         return False
 
     def _is_transfer(self, tx: Transaction) -> bool:
-        """A transfer has all splits going to asset/liability/bank accounts."""
+        """True if all splits are to bank/asset/liability (\"settled\" transfer)."""
         if not tx.splits:
             return False
         for sp in tx.splits:
@@ -283,6 +283,23 @@ class GnuCashLoader:
             if acct.account_type not in _TRANSFER_TYPES:
                 return False
         return True
+
+    def _is_unsettled_transfer(self, tx: Transaction) -> bool:
+        """True if exactly one split is Unspecified/Imbalance and the other is own account (bank/asset)."""
+        if not self._has_target_account(tx) or len(tx.splits) != 2:
+            return False
+        target_idx = None
+        for i, sp in enumerate(tx.splits):
+            parts = sp.account_path.split(":")
+            if any(part in _TARGET_ACCOUNTS for part in parts):
+                if target_idx is not None:
+                    return False
+                target_idx = i
+        if target_idx is None:
+            return False
+        other_idx = 1 - target_idx
+        acct = self._find_account_by_path(tx.splits[other_idx].account_path)
+        return acct is not None and acct.account_type in _TRANSFER_TYPES
 
 
 class GnuCashWriter:

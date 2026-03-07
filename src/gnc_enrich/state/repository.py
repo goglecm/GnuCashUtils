@@ -127,6 +127,7 @@ def _parse_transaction(d: dict) -> Transaction:
         account_name=d.get("account_name", ""),
         original_category=d.get("original_category", ""),
         is_transfer=d.get("is_transfer", False),
+        is_unsettled_transfer=d.get("is_unsettled_transfer", False),
     )
 
 

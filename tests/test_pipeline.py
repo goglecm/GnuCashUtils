@@ -52,7 +52,7 @@ def test_pipeline_generates_proposals(tmp_path: Path) -> None:
     pipeline = EnrichmentPipeline()
     result = pipeline.run(config)
 
-    assert result.proposal_count == 4
+    assert result.proposal_count == 3
     assert result.skipped_count == 0
 
 
@@ -64,7 +64,7 @@ def test_proposals_persisted_to_state(tmp_path: Path) -> None:
 
     state = StateRepository(dirs["state"])
     proposals = state.load_proposals()
-    assert len(proposals) == 4
+    assert len(proposals) == 3
     assert all(p.suggested_splits for p in proposals)
     assert all(p.rationale for p in proposals)
 
@@ -80,7 +80,7 @@ def test_pipeline_respects_skipped(tmp_path: Path) -> None:
     pipeline = EnrichmentPipeline()
     result = pipeline.run(config)
 
-    assert result.proposal_count == 3
+    assert result.proposal_count == 2
     assert result.skipped_count == 1
 
 
@@ -103,7 +103,7 @@ def test_pipeline_include_skipped(tmp_path: Path) -> None:
     pipeline = EnrichmentPipeline()
     result = pipeline.run(config)
 
-    assert result.proposal_count == 4
+    assert result.proposal_count == 3
 
 
 def test_run_config_metadata_saved(tmp_path: Path) -> None:
@@ -128,11 +128,11 @@ def test_proposals_have_evidence(tmp_path: Path) -> None:
         assert p.confidence > 0
 
 
-def test_email_index_min_date_uses_earliest_candidate(tmp_path: Path) -> None:
-    """Pipeline must index emails from (earliest candidate date - window) so old candidates get matches."""
+def test_email_index_min_date_uses_earliest_expense_candidate(tmp_path: Path) -> None:
+    """Pipeline must index emails from (earliest Unspecified/Imbalance-GBP tx date - window), not transfers."""
     dirs = _setup_pipeline_dirs(tmp_path)
     config = _make_config(dirs)
-    # Sample book candidates: 2025-01-15, 2025-01-20, 2025-02-01, 2025-01-25 (transfer). Earliest = 2025-01-15.
+    # Sample book expense candidates: 2025-01-15, 2025-01-20, 2025-02-01 (transfer excluded). Earliest = 2025-01-15.
     # With date_window_days=7, min_email_date should be 2025-01-08.
     expected_min = date(2025, 1, 15) - timedelta(days=7)
     assert expected_min == date(2025, 1, 8)

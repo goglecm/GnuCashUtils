@@ -276,7 +276,7 @@ class TestReviewWebApp:
         assert resp.status_code == 200
         html = resp.data.decode()
         assert "To categorise" in html or "expenses" in html.lower()
-        assert "Transfers" in html
+        assert "transfer" in html.lower()
         assert "Approved" in html
 
     def test_nonexistent_proposal_redirects(self, client) -> None:

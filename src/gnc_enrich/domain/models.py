@@ -54,6 +54,7 @@ class Transaction:
     account_name: str = ""
     original_category: str = ""
     is_transfer: bool = False
+    is_unsettled_transfer: bool = False
 
 
 @dataclass(slots=True)
