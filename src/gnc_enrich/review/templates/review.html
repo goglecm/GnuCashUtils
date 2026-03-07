@@ -32,15 +32,22 @@
 {% if proposal.evidence.emails %}
 <div class="card">
     <h2>Matched Emails ({{ proposal.evidence.emails|length }})</h2>
+    <p style="color:var(--muted);font-size:0.85rem;">Check the emails that correspond to this transaction. Approved emails will enrich the description.</p>
     {% for em in proposal.evidence.emails %}
-    <div class="evidence-item">
-        <span class="score">Score: {{ "%.1f"|format(em.relevance_score) }}</span>
-        <div class="sender">{{ em.sender }}</div>
-        <div>{{ em.subject }}</div>
-        <div style="color:var(--muted);font-size:0.85rem;">{{ em.sent_at.strftime('%d/%m/%Y %H:%M') if em.sent_at else '' }}</div>
-        {% if em.parsed_amounts %}
-        <div style="font-size:0.85rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
-        {% endif %}
+    <div class="evidence-item" style="display:flex;gap:0.75rem;align-items:flex-start;">
+        <input type="checkbox" name="approved_email" value="{{ em.evidence_id }}" form="decision-form" style="margin-top:0.25rem;" {% if not decided %}checked{% endif %}>
+        <div style="flex:1;">
+            <span class="score">Score: {{ "%.1f"|format(em.relevance_score) }}</span>
+            <div class="sender">{{ em.sender }}</div>
+            <div>{{ em.subject }}</div>
+            <div style="color:var(--muted);font-size:0.85rem;">{{ em.sent_at.strftime('%d/%m/%Y %H:%M') if em.sent_at else '' }}</div>
+            {% if em.parsed_amounts %}
+            <div style="font-size:0.85rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+            {% endif %}
+            {% if em.body_snippet %}
+            <div style="font-size:0.85rem;color:var(--muted);margin-top:0.25rem;">{{ em.body_snippet[:200] }}</div>
+            {% endif %}
+        </div>
     </div>
     {% endfor %}
 </div>
@@ -49,6 +56,10 @@
 {% if proposal.evidence.receipt %}
 <div class="card">
     <h2>Matched Receipt</h2>
+    <div style="display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:0.75rem;">
+        <input type="checkbox" name="approved_receipt" value="1" form="decision-form" style="margin-top:0.25rem;" {% if not decided %}checked{% endif %}>
+        <label style="font-weight:600;">This receipt corresponds to this transaction</label>
+    </div>
     <div class="field"><label>Source</label><div class="value">{{ proposal.evidence.receipt.source_path }}</div></div>
     {% if proposal.evidence.receipt.parsed_total %}
     <div class="field"><label>Total</label><div class="value amount">&pound;{{ proposal.evidence.receipt.parsed_total }}</div></div>
@@ -67,7 +78,7 @@
 {% if not decided %}
 <div class="card">
     <h2>Your Decision</h2>
-    <form method="POST" action="{{ url_for('decide', proposal_id=proposal.proposal_id) }}">
+    <form id="decision-form" method="POST" action="{{ url_for('decide', proposal_id=proposal.proposal_id) }}">
         <div class="field">
             <label>Description</label>
             <input type="text" name="description" value="{{ proposal.suggested_description }}">

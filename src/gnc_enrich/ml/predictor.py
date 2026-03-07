@@ -185,8 +185,98 @@ class CategoryPredictor:
                 merchant = domain.capitalize()
 
         if merchant and merchant.lower() not in base.lower():
-            return f"{base} - {merchant} {date_str}" if base else f"{merchant} {date_str}"
-        return f"{base} {date_str}" if base else date_str
+            desc = f"{base} - {merchant} {date_str}" if base else f"{merchant} {date_str}"
+        else:
+            desc = f"{base} {date_str}" if base else date_str
+
+        return desc
+
+    def enrich_description_from_evidence(
+        self,
+        base_description: str,
+        approved_emails: list[EmailEvidence],
+        approved_receipt: ReceiptEvidence | None,
+    ) -> str:
+        """Enrich description with content from user-approved evidence."""
+        parts = [base_description]
+
+        if approved_emails:
+            email_detail = self._extract_purchase_detail(approved_emails)
+            if email_detail:
+                parts.append(email_detail)
+
+        if approved_receipt:
+            receipt_detail = self._extract_receipt_detail(approved_receipt)
+            if receipt_detail:
+                parts.append(receipt_detail)
+
+        return " | ".join(p for p in parts if p)
+
+    def _extract_purchase_detail(self, emails: list[EmailEvidence]) -> str:
+        """Pull purchase details from email body content."""
+        details: list[str] = []
+        for em in emails[:2]:
+            body = em.full_body or em.body_snippet
+            if not body:
+                continue
+            snippet = body[:300].strip().replace("\n", " ").replace("\r", "")
+            if em.subject:
+                details.append(f"{em.subject}: {snippet}")
+            else:
+                details.append(snippet)
+        return "; ".join(details)[:200] if details else ""
+
+    def _extract_receipt_detail(self, receipt: ReceiptEvidence) -> str:
+        """Summarise receipt line items for the description."""
+        if not receipt.line_items:
+            if receipt.parsed_total is not None:
+                return f"Receipt total £{receipt.parsed_total}"
+            return ""
+        item_strs = [f"{it.description} £{it.amount}" for it in receipt.line_items[:5]]
+        summary = ", ".join(item_strs)
+        if receipt.parsed_total is not None:
+            summary += f" (total £{receipt.parsed_total})"
+        return summary
+
+    def describe_terse_items(
+        self, receipt: ReceiptEvidence
+    ) -> list[str]:
+        """Use LLM to expand terse/abbreviated receipt item names."""
+        if (
+            not self._llm_config
+            or self._llm_config.mode == LlmMode.DISABLED
+            or not receipt.line_items
+        ):
+            return [it.description for it in receipt.line_items]
+
+        terse_names = [it.description for it in receipt.line_items]
+        try:
+            payload = {
+                "model": self._llm_config.model_name,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "These are abbreviated item names from a receipt. "
+                            "For each one, provide a clear, expanded description of what the item likely is. "
+                            "Return a JSON array of strings, one per input item.\n\n"
+                            + json.dumps(terse_names)
+                        ),
+                    }
+                ],
+                "temperature": self._llm_config.temperature,
+                "max_tokens": self._llm_config.max_tokens,
+            }
+            resp = requests.post(self._llm_config.endpoint, json=payload, timeout=30)
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"].strip()
+            expanded = json.loads(content)
+            if isinstance(expanded, list) and len(expanded) == len(terse_names):
+                return expanded
+        except Exception:
+            logger.warning("LLM item description failed", exc_info=True)
+
+        return terse_names
 
     def _query_llm(
         self,

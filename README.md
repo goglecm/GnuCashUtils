@@ -2,19 +2,19 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 142 tests passing.
+> Status: **v1 Implemented** — all modules complete, 163 tests passing.
 
 ## What this project does
 
 1. Reads a GnuCash book (gzip-compressed XML `.gnucash`).
 2. Finds unresolved transactions (categories like `Unspecified` and `Imbalance-GBP`).
 3. Gathers evidence from:
-   - `.eml` emails (parsed, indexed, searched by date/amount/text)
+   - `.eml` emails from directories with subdirectories (parsed, indexed, searched by date/amount/text)
    - Receipt images (`jpg`, `jpeg`, `png`, `heic`, `heif`) via Tesseract OCR
    - Historical categorized transactions
-4. Generates suggested descriptions/categories/splits with ML confidence scores.
-5. Presents proposals **one transaction at a time** in a local Flask web app.
-6. Applies only explicitly approved changes, with backup + audit + rollback journal.
+4. Generates suggested descriptions/categories/splits with ML confidence scores. Can propose new categories.
+5. Presents proposals **one transaction at a time** in a local Flask web app, with evidence approval checkboxes. Approved evidence enriches descriptions.
+6. Applies only explicitly approved changes, with backup + audit + rollback journal. New categories are created in the GnuCash file.
 
 The full specification is in:
 - `gnucash_email_receipt_categorization_spec.mdc`
@@ -71,7 +71,7 @@ python -m gnc_enrich run \
 Arguments:
 
 - `--gnucash-path` (required): Gzip-compressed XML GnuCash file.
-- `--emails-dir` (required): Directory of `.eml` files.
+- `--emails-dir` (required): Directory of `.eml` files (scanned recursively, including subdirectories).
 - `--receipts-dir` (required): Directory of receipt images (`jpg|jpeg|png|heic|heif`).
 - `--processed-receipts-dir` (required): Destination for approved/matched receipts.
 - `--state-dir` (required): Index/proposal/audit state directory.
@@ -168,7 +168,7 @@ python -m gnc_enrich apply --state-dir /finance/gnc-state --create-backup --back
 │   ├── apply/engine.py              # Apply, backup, rollback, audit
 │   ├── state/repository.py          # JSON/JSONL state persistence
 │   └── services/pipeline.py         # Pipeline orchestration
-└── tests/                           # 142 tests
+└── tests/                           # 163 tests
     ├── conftest.py                  # Shared fixtures
     └── fixtures/emails/             # Sample .eml files
 ```
@@ -196,7 +196,7 @@ The `--state-dir` directory contains:
 ## Running tests
 
 ```bash
-pytest              # all 142 tests
+pytest              # all 163 tests
 pytest -v           # verbose
 pytest -k matching  # keyword filter
 pytest tests/test_integration.py -v  # integration only

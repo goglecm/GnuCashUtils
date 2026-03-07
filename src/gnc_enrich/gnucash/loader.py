@@ -283,6 +283,14 @@ class GnuCashWriter:
         if book is None:
             raise ValueError("No <gnc:book> element found")
 
+        new_categories: set[str] = set()
+        for change in changes.values():
+            for sp in change.get("splits", []):
+                new_categories.add(sp["account_path"])
+
+        if new_categories:
+            self._ensure_accounts_exist(book, new_categories)
+
         for trn_el in book.findall("gnc:transaction", _NS):
             tx_id = _text(trn_el.find("trn:id", _NS))
             if tx_id not in changes:
@@ -303,3 +311,88 @@ class GnuCashWriter:
 
         logger.info("Wrote changes to %s", output)
         return output
+
+    def _ensure_accounts_exist(
+        self, book: etree._Element, category_paths: set[str]
+    ) -> None:
+        """Create new account elements for category paths that don't exist yet."""
+        existing: set[str] = set()
+        account_ids: dict[str, str] = {}
+
+        for acct_el in book.findall("gnc:account", _NS):
+            acct_id = _text(acct_el.find("act:id", _NS))
+            name = _text(acct_el.find("act:name", _NS))
+            account_ids[name] = acct_id
+
+        loader = GnuCashLoader()
+        loader._accounts = {}
+        loader._account_paths = {}
+        loader._build_account_map(book)
+        for acct in loader._accounts.values():
+            existing.add(acct.full_path)
+
+        for cat_path in category_paths:
+            if cat_path in existing:
+                continue
+            self._create_account_chain(book, cat_path, existing, loader)
+
+    def _create_account_chain(
+        self,
+        book: etree._Element,
+        full_path: str,
+        existing: set[str],
+        loader: GnuCashLoader,
+    ) -> None:
+        """Create any missing account nodes along a path like 'Expenses:Food:Takeaway'."""
+        import uuid as _uuid
+
+        parts = full_path.split(":")
+        for i in range(1, len(parts) + 1):
+            partial = ":".join(parts[:i])
+            if partial in existing:
+                continue
+
+            parent_path = ":".join(parts[: i - 1]) if i > 1 else ""
+            parent_id = ""
+            if parent_path:
+                for acct in loader._accounts.values():
+                    if acct.full_path == parent_path:
+                        parent_id = acct.account_id
+                        break
+            else:
+                for acct in loader._accounts.values():
+                    if acct.account_type == "ROOT":
+                        parent_id = acct.account_id
+                        break
+
+            new_id = _uuid.uuid4().hex
+            acct_el = etree.SubElement(book, "{%s}account" % _NS["gnc"], version="2.0.0")
+            name_el = etree.SubElement(acct_el, "{%s}name" % _NS["act"])
+            name_el.text = parts[i - 1]
+            id_el = etree.SubElement(acct_el, "{%s}id" % _NS["act"], type="guid")
+            id_el.text = new_id
+            type_el = etree.SubElement(acct_el, "{%s}type" % _NS["act"])
+            type_el.text = "EXPENSE"
+
+            cmdty_el = etree.SubElement(acct_el, "{%s}commodity" % _NS["act"])
+            space_el = etree.SubElement(cmdty_el, "{%s}space" % _NS["cmdty"])
+            space_el.text = "ISO4217"
+            cid_el = etree.SubElement(cmdty_el, "{%s}id" % _NS["cmdty"])
+            cid_el.text = "GBP"
+
+            if parent_id:
+                par_el = etree.SubElement(acct_el, "{%s}parent" % _NS["act"], type="guid")
+                par_el.text = parent_id
+
+            new_acct = Account(
+                account_id=new_id,
+                name=parts[i - 1],
+                full_path=partial,
+                account_type="EXPENSE",
+                currency="GBP",
+                parent_id=parent_id or None,
+            )
+            loader._accounts[new_id] = new_acct
+            loader._account_paths[new_id] = partial
+            existing.add(partial)
+            logger.info("Created new account: %s (id=%s)", partial, new_id)

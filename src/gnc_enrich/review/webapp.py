@@ -52,6 +52,9 @@ def create_app(service: ReviewQueueService) -> Flask:
         description = request.form.get("description", proposal.suggested_description)
         note = request.form.get("note", "")
 
+        approved_email_ids = request.form.getlist("approved_email")
+        approved_receipt = "approved_receipt" in request.form
+
         split_paths = request.form.getlist("split_path")
         split_amounts = request.form.getlist("split_amount")
         final_splits: list[Split] = []
@@ -71,6 +74,8 @@ def create_app(service: ReviewQueueService) -> Flask:
             final_description=description,
             final_splits=final_splits,
             reviewer_note=note,
+            approved_email_ids=approved_email_ids,
+            approved_receipt=approved_receipt,
         )
         service.submit_decision(decision)
 

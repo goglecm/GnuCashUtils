@@ -62,10 +62,13 @@ class EnrichmentPipeline:
         logger.info("Filtered to %d candidate transactions", len(candidates))
 
         email_index = EmailIndexRepository()
-        email_index.build_or_load(config.emails_dir, config.state_dir)
+        if config.emails_dir.exists():
+            email_index.build_or_load(config.emails_dir, config.state_dir)
+        else:
+            logger.info("Emails directory does not exist: %s — skipping email indexing", config.emails_dir)
 
         receipt_repo = ReceiptRepository()
-        receipt_files = receipt_repo.list_unprocessed(config.receipts_dir)
+        receipt_files = receipt_repo.list_unprocessed(config.receipts_dir) if config.receipts_dir.exists() else []
         ocr_engine = ReceiptOcrEngine(llm_config=config.llm)
 
         receipt_evidences: list[ReceiptEvidence] = []

@@ -18,11 +18,14 @@ The system must:
 
 ### In Scope
 - Input GnuCash format: **XML (`.gnucash`)** — gzip-compressed XML.
-- Email ingestion from directory of `.eml` files.
+- Email ingestion from directory of `.eml` files, **including subdirectories** (recursive scan).
 - Receipt ingestion from directory of images: **`jpeg` / `jpg` / `png` / `heic` / `heif`**.
 - Matching transactions with evidence windows around transaction date.
 - ML/AI-assisted category predictions and confidence scoring.
-- One-by-one review workflow in a local web application.
+- **New category creation**: the system may propose categories not yet in the GnuCash file; user-approved new categories are written as new accounts.
+- **Evidence-driven descriptions**: when the user approves that an email or receipt corresponds to a transaction, the description and splits are enriched from the evidence content (email body, receipt line items).
+- **LLM/web lookup for terse receipt items**: when receipt line items are abbreviated or unclear, the LLM may be consulted to describe them.
+- One-by-one review workflow in a local web application with **evidence approval** (user confirms which evidence is relevant before final decision).
 - Dry-run and apply modes.
 - Audit logging, backup points, undo capability.
 - Persistence of indexed evidence and user feedback.
@@ -51,6 +54,10 @@ The system must:
 8. Existing non-empty description should be **appended to**, not overwritten.
 9. Description date formatting must use **GB format** (`DD/MM/YYYY`).
 10. Refunds should be categorized to the **same category as the original transaction** when identifiable.
+11. **Not all transactions have emails** associated with them, and **not all emails have transactions** associated with them. The system must handle both cases gracefully.
+12. **Receipts may often be absent** — most of the time there may be no receipts at all. The system must not require receipts to function.
+13. **New categories are allowed** — when a transaction does not fit any existing category, the system may propose a new category name. The user can approve it, and it will be written to the GnuCash file as a new account.
+14. **Evidence approval drives enrichment** — the user approves which evidence (emails, receipts) is relevant to a transaction. Approved evidence content feeds into the description and split details.
 
 ---
 
@@ -58,7 +65,7 @@ The system must:
 
 ## 4.1 Inputs
 - `--gnucash-path`: path to input GnuCash XML file (`.gnucash`).
-- `--emails-dir`: directory containing `.eml` files.
+- `--emails-dir`: directory containing `.eml` files (scanned recursively, including subdirectories).
 - `--receipts-dir`: directory containing receipt images (`jpeg|jpg|png|heic|heif`).
 - `--processed-receipts-dir`: destination directory for approved/matched receipts.
 - Optional: `--state-dir` for indexes/cache/audit metadata.
@@ -167,6 +174,12 @@ User-configurable parameters must include at least:
 - Detect line items and group multiple same-category items into single split buckets.
 - Discounts may be present and should be proportionally or explicitly allocated according to extracted structure.
 - User can edit splits as fixed amounts or percentages.
+
+## 7.5 Evidence-Driven Description Enrichment
+- When the user approves that specific emails correspond to a transaction, the description should be enriched with purchase details extracted from the email content (e.g., order items, merchant name, service description).
+- When the user approves a receipt as relevant, receipt line items and totals should feed into the description and split structure.
+- Some receipts are terse (abbreviated item names). For these, the system should use the LLM to interpret or expand item descriptions. If the LLM is disabled, terse items are used as-is.
+- The user's evidence approval is the trigger for enrichment — unapproved evidence does not contribute to the final description.
 
 ---
 

@@ -95,6 +95,7 @@ def _parse_email_evidence(d: dict) -> EmailEvidence:
         subject=d["subject"],
         sent_at=datetime.fromisoformat(d["sent_at"]),
         body_snippet=d.get("body_snippet", ""),
+        full_body=d.get("full_body", ""),
         parsed_amounts=[_parse_decimal(a) for a in d.get("parsed_amounts", [])],
         relevance_score=float(d.get("relevance_score", 0.0)),
     )
@@ -157,6 +158,8 @@ def _parse_decision(d: dict) -> ReviewDecision:
         final_splits=[_parse_split(s) for s in d["final_splits"]],
         reviewer_note=d.get("reviewer_note", ""),
         decided_at=_parse_datetime(d.get("decided_at")),
+        approved_email_ids=d.get("approved_email_ids", []),
+        approved_receipt=d.get("approved_receipt", False),
     )
 
 

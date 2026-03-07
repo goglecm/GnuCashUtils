@@ -61,7 +61,7 @@ src/gnc_enrich/          # Main package
   apply/engine.py        # Apply, backup, rollback, audit
   state/repository.py    # JSON/JSONL state persistence
   services/pipeline.py   # High-level orchestration
-tests/                   # Test suite (142 tests)
+tests/                   # Test suite (163 tests)
   conftest.py            # Shared fixtures (sample GnuCash XML)
   fixtures/emails/       # Sample .eml files
 ```

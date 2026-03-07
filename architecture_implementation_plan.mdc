@@ -2,7 +2,7 @@
 
 ## Status: Implemented (v1)
 
-All modules have been implemented with full test coverage (142 tests).
+All modules have been implemented with full test coverage (163 tests).
 
 ## Package Layout
 
@@ -67,16 +67,16 @@ src/gnc_enrich/
 |--------|--------|-------------|
 | `config.py` | Done | RunConfig, ApplyConfig, ReviewConfig, LlmConfig dataclasses |
 | `domain/models.py` | Done | Transaction, Split, Account, Evidence, Proposal, ReviewDecision, AuditEntry, SkipRecord |
-| `gnucash/loader.py` | Done | GnuCashLoader (gzip XML), GnuCashWriter (backup + write), candidate filtering |
-| `email/parser.py` | Done | EmlParser using stdlib email + GBP amount regex extraction |
-| `email/index.py` | Done | JSONL-based persistent index with in-memory search, incremental updates |
+| `gnucash/loader.py` | Done | GnuCashLoader (gzip XML), GnuCashWriter (backup + write + new account creation), candidate filtering |
+| `email/parser.py` | Done | EmlParser using stdlib email + GBP amount regex extraction + full body storage |
+| `email/index.py` | Done | JSONL-based persistent index with recursive subdir scanning, incremental updates |
 | `receipt/ocr.py` | Done | ReceiptOcrEngine (Tesseract + optional LLM fallback), total/line-item extraction |
 | `receipt/repository.py` | Done | ReceiptRepository: list unprocessed, move to processed with conflict naming |
 | `matching/email_matcher.py` | Done | Multi-signal scoring (amount, date proximity, text tokens) |
 | `matching/receipt_matcher.py` | Done | One-to-one matching with amount tolerance, double-match prevention |
-| `ml/predictor.py` | Done | TF-IDF + SGDClassifier, keyword fallback, optional LLM rationale |
+| `ml/predictor.py` | Done | TF-IDF + SGDClassifier, keyword fallback, optional LLM rationale, evidence-driven description enrichment, terse item lookup |
 | `review/service.py` | Done | ReviewQueueService: proposal queue, decision capture, skip persistence |
-| `review/webapp.py` | Done | Flask app with evidence panel, approve/edit/skip controls |
+| `review/webapp.py` | Done | Flask app with evidence panel, evidence approval checkboxes, approve/edit/skip controls |
 | `apply/engine.py` | Done | Dry-run report, apply with backup + audit + journal, rollback |
 | `state/repository.py` | Done | JSON/JSONL persistence for all state artifacts |
 | `services/pipeline.py` | Done | EnrichmentPipeline wiring all components end-to-end |
@@ -98,4 +98,5 @@ src/gnc_enrich/
 | `test_review.py` | 15 | Queue service logic + Flask test client routes |
 | `test_integration.py` | 3 | Full run->review->apply cycle, Flask client flow, CLI dispatch |
 | `test_cli.py` | 4 | Parser contracts, flag defaults, LLM args |
-| **Total** | **142** | |
+| `test_new_features.py` | 21 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence |
+| **Total** | **163** | |

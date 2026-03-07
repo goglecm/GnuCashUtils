@@ -1,6 +1,6 @@
 # Test Plan & Strategy (v1)
 
-## Status: Implemented — 142 tests passing
+## Status: Implemented — 163 tests passing
 
 ## Objectives
 - Provide immediate, repeatable confidence that all modules work correctly.
@@ -42,6 +42,7 @@
 | `test_review.py` | 15 | `review/service`, `review/webapp` (Flask test client) |
 | `test_integration.py` | 3 | Full cycle: run->review->apply, Flask flow, CLI dispatch |
 | `test_cli.py` | 4 | `cli` (parser, flags, LLM args) |
+| `test_new_features.py` | 21 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence |
 
 ## Fixtures
 

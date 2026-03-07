@@ -23,6 +23,7 @@ def _serialize_evidence(ev: EmailEvidence) -> dict[str, Any]:
         "subject": ev.subject,
         "sent_at": ev.sent_at.isoformat(),
         "body_snippet": ev.body_snippet,
+        "full_body": ev.full_body,
         "parsed_amounts": [str(a) for a in ev.parsed_amounts],
         "relevance_score": ev.relevance_score,
     }
@@ -36,6 +37,7 @@ def _deserialize_evidence(d: dict) -> EmailEvidence:
         subject=d["subject"],
         sent_at=datetime.fromisoformat(d["sent_at"]),
         body_snippet=d.get("body_snippet", ""),
+        full_body=d.get("full_body", ""),
         parsed_amounts=[Decimal(a) for a in d.get("parsed_amounts", [])],
         relevance_score=float(d.get("relevance_score", 0.0)),
     )
@@ -65,10 +67,10 @@ class EmailIndexRepository:
                     self._entries.append(_deserialize_evidence(json.loads(line)))
 
         new_count = 0
-        eml_files = sorted(emails_dir.glob("*.eml"))
+        eml_files = sorted(emails_dir.rglob("*.eml"))
         with index_path.open("a", encoding="utf-8") as idx_f:
             for eml_path in eml_files:
-                fname = eml_path.name
+                fname = str(eml_path.relative_to(emails_dir))
                 if fname in self._indexed_files:
                     continue
                 try:

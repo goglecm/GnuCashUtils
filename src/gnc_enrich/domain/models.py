@@ -58,6 +58,7 @@ class EmailEvidence:
     subject: str
     sent_at: datetime
     body_snippet: str = ""
+    full_body: str = ""
     parsed_amounts: list[Decimal] = field(default_factory=list)
     relevance_score: float = 0.0
 
@@ -100,6 +101,8 @@ class ReviewDecision:
     final_splits: list[Split]
     reviewer_note: str = ""
     decided_at: datetime | None = None
+    approved_email_ids: list[str] = field(default_factory=list)
+    approved_receipt: bool = False
 
 
 @dataclass(slots=True)

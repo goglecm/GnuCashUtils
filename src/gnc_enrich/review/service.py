@@ -70,6 +70,8 @@ class ReviewQueueService:
                 final_splits=decision.final_splits,
                 reviewer_note=decision.reviewer_note,
                 decided_at=datetime.now(timezone.utc),
+                approved_email_ids=decision.approved_email_ids,
+                approved_receipt=decision.approved_receipt,
             )
 
         self._state.save_decision(decision)

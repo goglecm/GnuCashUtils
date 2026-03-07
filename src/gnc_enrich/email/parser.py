@@ -82,6 +82,7 @@ class EmlParser:
             subject=subject,
             sent_at=sent_at,
             body_snippet=body_snippet,
+            full_body=body_text,
             parsed_amounts=parsed_amounts,
             relevance_score=0.0,
         )
