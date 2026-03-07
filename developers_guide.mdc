@@ -1,0 +1,69 @@
+# Developers Guide
+
+## Development Environment
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e .
+pip install pytest
+```
+
+## Running Tests
+
+From repository root:
+
+```bash
+PYTHONPATH=src pytest
+```
+
+Useful selections:
+
+```bash
+# Single file
+PYTHONPATH=src pytest tests/test_cli.py
+
+# Keyword filter
+PYTHONPATH=src pytest -k config
+
+# Verbose output
+PYTHONPATH=src pytest -vv
+```
+
+## How to Add Tests (Module Completion Workflow)
+
+When implementing a module/class:
+
+1. Locate its test file in `tests/` (or add one using `tests/test_<module>.py`).
+2. Keep/update existing scaffold test(s) that prove imports and constructors.
+3. Replace `NotImplementedError` assertions with behavioral tests for real logic.
+4. Add at least:
+   - happy path
+   - one edge case
+   - one failure case (invalid input/exception path)
+5. If module touches I/O, add temporary-path based tests using `tmp_path` fixture.
+6. If adding new public APIs, add parser/API contract tests.
+
+## Testing Expectations by Area
+
+- `cli.py`: parser contracts, required args, flag defaults, command dispatch.
+- `config.py` and `domain/models.py`: dataclass defaults, type/shape invariants.
+- Adapter modules (`gnucash`, `email`, `receipt`): fixture-driven parse/read/write tests.
+- Matching/ML modules: deterministic scoring/prediction tests with fixed seeds/mocks.
+- `review`, `state`, `apply`, `services`: workflow and state transition tests.
+
+## Suggested Future Enhancements
+
+- Add coverage reporting via `pytest-cov` once behavior tests expand.
+- Add CI job to run `pytest` on every PR.
+- Add `tests/fixtures/` datasets:
+  - sample XML + SQLite books
+  - sample `.eml` corpus
+  - sample receipt images (including low-legibility cases)
+
+## Troubleshooting
+
+- Import errors: ensure `PYTHONPATH=src` or install with `pip install -e .`.
+- Missing pytest: install with `pip install pytest`.
+- Bytecode clutter: `find . -type d -name '__pycache__' -prune -exec rm -rf {} +`.

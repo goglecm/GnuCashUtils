@@ -1,0 +1,72 @@
+# Test Plan & Strategy (v1)
+
+## Objectives
+- Provide immediate, repeatable confidence that the project skeleton remains importable and callable.
+- Establish test infrastructure now so feature teams can add behavior tests module-by-module as implementations land.
+- Ensure each current class/module has a corresponding test mechanism (contract/smoke test scaffold).
+
+## Testing Levels
+1. **Static/contract tests (current)**
+   - Verify all modules import.
+   - Verify dataclass/domain/config constructors.
+   - Verify abstract/stub methods currently raise `NotImplementedError` where expected.
+   - Verify CLI parser and command contracts.
+
+2. **Unit tests (next, per module implementation)**
+   - Pure function/service logic with mocks/fakes.
+   - Matching score logic, filters, state transitions.
+
+3. **Adapter tests (next)**
+   - GnuCash XML/SQLite read/write adapters with fixture books.
+   - EML parser with real-world malformed samples.
+   - Receipt OCR pipeline with image fixtures.
+
+4. **Integration tests (next)**
+   - End-to-end `run -> review decision -> apply` flow against temporary state dir.
+   - Backup/audit/journal artifacts and rollback behavior.
+
+5. **Performance/regression tests (next)**
+   - Indexing and matching throughput against representative synthetic data volumes.
+   - Memory/storage budget checks to keep workspace under target limits.
+
+## Test Matrix (Current Skeleton Coverage)
+- `gnc_enrich.__main__`: module invocation entrypoint imports.
+- `gnc_enrich.cli`: parser/subcommands/required args.
+- `gnc_enrich.config`: config dataclass defaults and required fields.
+- `gnc_enrich.domain.models`: dataclass creation and value retention.
+- `gnc_enrich.gnucash.loader`: contract methods raise until implemented.
+- `gnc_enrich.email.parser`, `gnc_enrich.email.index`: stub contract tests.
+- `gnc_enrich.receipt.ocr`, `gnc_enrich.receipt.repository`: stub contract tests.
+- `gnc_enrich.matching.email_matcher`, `gnc_enrich.matching.receipt_matcher`: stub contract tests.
+- `gnc_enrich.ml.predictor`: predictor/trainer stub contract tests.
+- `gnc_enrich.review.service`, `gnc_enrich.review.webapp`: stub contract tests.
+- `gnc_enrich.apply.engine`: stub contract tests.
+- `gnc_enrich.state.repository`: stub contract tests.
+- `gnc_enrich.services.pipeline`: stub contract tests.
+
+## Tooling
+- Test runner: `pytest`
+- Python support: CPython 3.11+
+- Optional future plugins (when needed):
+  - `pytest-cov` for coverage gates
+  - `pytest-xdist` for parallelization
+  - `hypothesis` for property-based matching/parser tests
+
+## Conventions
+- Test file naming: `tests/test_<module>.py`
+- Test function naming: `test_<behavior>`
+- Use AAA structure (Arrange/Act/Assert).
+- Prefer lightweight fixtures in `tests/conftest.py`.
+- For not-yet-implemented features, test explicit `NotImplementedError` to keep intent clear.
+
+## Exit Criteria (Current Stage)
+- All tests pass locally via `pytest`.
+- CLI help and parser tests pass.
+- Each module/class has at least one test mechanism in place.
+
+## Evolution Plan
+- As each module is implemented:
+  1. Replace `NotImplementedError` tests with behavioral tests.
+  2. Add happy-path + edge-case + failure-path tests.
+  3. Add fixture data under `tests/fixtures/` for adapter-level validation.
+  4. Add integration test scenario for any cross-module behavior introduced.
