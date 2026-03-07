@@ -36,7 +36,7 @@ def test_apply_command_dry_run() -> None:
     ])
     assert ns.command == "apply"
     assert ns.dry_run is True
-    assert ns.create_backup is False
+    assert ns.create_backup is True
 
 
 def test_run_command_with_llm() -> None:

@@ -161,8 +161,22 @@ class CategoryPredictor:
         )
 
     def _check_refund_match(self, tx: Transaction) -> str | None:
-        """If tx looks like a refund (negative amount), find the original category."""
-        if tx.amount >= 0 or not self._trained:
+        """If tx looks like a refund (incoming bank transfer), find the original category.
+
+        Since ``tx.amount`` is always the absolute sum of positive splits,
+        we detect refunds by checking whether the bank-side split
+        (``tx.account_name``) carries a positive amount (money flowing in).
+        """
+        if not self._trained:
+            return None
+        if not tx.account_name:
+            return None
+        is_refund = any(
+            sp.amount > 0
+            for sp in tx.splits
+            if sp.account_path == tx.account_name
+        )
+        if not is_refund:
             return None
         text = self._featurize_text(tx)
         X = self._vectorizer.transform([text])

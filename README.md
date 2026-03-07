@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 260 tests passing.
+> Status: **v1 Implemented** — all modules complete, 280 tests passing.
 
 ## What this project does
 
@@ -46,13 +46,17 @@ pip install -e ".[dev]"
 
 ## CLI commands
 
+After `pip install -e .`, the `gnc-enrich` console script is available (equivalent to `python -m gnc_enrich`).
+
 The project exposes three top-level commands:
 
 ```bash
-python -m gnc_enrich run ...
-python -m gnc_enrich review ...
-python -m gnc_enrich apply ...
+gnc-enrich run ...
+gnc-enrich review ...
+gnc-enrich apply ...
 ```
+
+Global flag: `-v` / `--verbose` enables DEBUG-level trace logging for all subcommands.
 
 ### 1) `run` — build proposals from source data
 
@@ -110,9 +114,9 @@ python -m gnc_enrich apply \
 Arguments:
 - `--state-dir` (required): Proposal/decision/audit state directory.
 - `--dry-run` (flag): Generate a human-readable report without writing changes.
-- `--create-backup` (flag): Create a timestamped backup before writing.
-- `--backup-dir`: Backup destination directory.
-- `--in-place` (flag): Apply changes directly to source GnuCash file.
+- `--create-backup` (default: true): Create a timestamped backup before writing. Use `--no-backup` to skip.
+- `--backup-dir`: Backup destination directory (default: `<state-dir>/backups`).
+- `--in-place` (default: true): Apply changes directly to source GnuCash file. Use `--no-in-place` to write to a new file.
 
 ---
 
@@ -168,7 +172,7 @@ python -m gnc_enrich apply --state-dir /finance/gnc-state --create-backup --back
 │   ├── apply/engine.py              # Apply, backup, rollback, audit
 │   ├── state/repository.py          # JSON/JSONL state persistence
 │   └── services/pipeline.py         # Pipeline orchestration
-└── tests/                           # 260 tests
+└── tests/                           # 280 tests
     ├── conftest.py                  # Shared fixtures
     └── fixtures/emails/             # 13 synthetic .eml files in subdirectories
 ```
@@ -196,7 +200,7 @@ The `--state-dir` directory contains:
 ## Running tests
 
 ```bash
-pytest              # all 260 tests
+pytest              # all 280 tests
 pytest -v           # verbose
 pytest -k matching  # keyword filter
 pytest tests/test_integration.py -v  # integration only

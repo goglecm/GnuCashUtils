@@ -61,10 +61,43 @@ src/gnc_enrich/          # Main package
   apply/engine.py        # Apply, backup, rollback, audit
   state/repository.py    # JSON/JSONL state persistence
   services/pipeline.py   # High-level orchestration
-tests/                   # Test suite (260 tests)
+tests/                   # Test suite (280 tests)
   conftest.py            # Shared fixtures (sample GnuCash XML)
   fixtures/emails/       # 13 synthetic .eml files in subdirectories
 ```
+
+## Documentation and Comment Standards
+
+All documentation and code comments must be written in **British English** with correct grammar and complete punctuation.
+
+Comments and docstrings must convey **intention** — not merely restate what the code does or how it does it. Every comment should answer *why* a decision was made, what trade-off was accepted, or what constraint the code satisfies. Do not write comments that a competent reader could infer from the code itself.
+
+Examples of what to avoid:
+
+```python
+# Bad — restates the code
+total = sum(amounts)  # Sum the amounts
+
+# Bad — describes the "what" without the "why"
+if len(categories) < 2:
+    return  # Return early if fewer than 2 categories
+```
+
+Examples of good practice:
+
+```python
+# SGDClassifier requires at least two distinct classes; fall back to
+# keyword heuristic when the training set is too homogeneous.
+if len(categories) < 2:
+    return
+
+# GnuCash stores split values as integer fractions (e.g. 2500/100 for
+# £25.00).  Using a fixed denominator of 100 is safe for GBP, which
+# always has two decimal places.
+num = int(d * 100)
+```
+
+These standards apply equally to docstrings, inline comments, README content, spec files, and `.mdc` rule files.
 
 ## How to Add Tests (Module Completion Workflow)
 
@@ -83,10 +116,10 @@ When implementing a module/class:
 - `cli.py`: parser contracts, required args, flag defaults, command dispatch.
 - `config.py` and `domain/models.py`: dataclass defaults, type/shape invariants.
 - `gnucash/loader.py`: fixture-driven XML parse/write tests using `sample_gnucash_path` conftest fixture.
-- `email/*`: fixture-driven parse tests using `tests/fixtures/emails/` .eml files; body filtering tests (HTML stripping, signature/quote removal, amount extraction from cleaned body).
+- `email/*`: fixture-driven parse tests using `tests/fixtures/emails/` .eml files; body filtering tests (HTML stripping, signature/quote removal, amount extraction from cleaned body); HTML entity decoding.
 - `receipt/*`: programmatically generated receipt images via Pillow.
 - `matching/*`: deterministic scoring/prediction tests with constructed evidence; tolerance-zero exact matching; no-amount email exclusion.
-- `ml/predictor.py`: train on synthetic history, verify predictions + LLM path (mocked).
+- `ml/predictor.py`: train on synthetic history, verify predictions + LLM path (mocked); refund detection with empty account_name; training edge cases (single tx, single category).
 - `review/*`: service unit tests + Flask test client for web routes.
 - `apply/engine.py`: dry-run, apply, backup, rollback, audit verification.
 - `services/pipeline.py`: integration tests with full fixture data.

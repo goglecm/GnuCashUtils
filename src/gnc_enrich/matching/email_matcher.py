@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from gnc_enrich.domain.models import EmailEvidence, Transaction
@@ -91,7 +91,7 @@ class EmailMatcher:
                 score += _WEIGHT_AMOUNT
                 break
 
-        ev_date = ev.sent_at.date()
+        ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
         day_diff = abs((ev_date - tx.posted_date).days)
         if day_diff <= self._window:
             proximity = 1.0 - (day_diff / max(self._window, 1))

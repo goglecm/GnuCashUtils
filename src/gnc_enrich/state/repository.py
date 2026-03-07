@@ -183,6 +183,11 @@ class StateRepository:
         self._dir = state_dir
         self._dir.mkdir(parents=True, exist_ok=True)
 
+    @property
+    def state_dir(self) -> Path:
+        """Public accessor for the state directory path."""
+        return self._dir
+
     # -- file paths ----------------------------------------------------------
 
     @property
@@ -220,7 +225,11 @@ class StateRepository:
     def load_proposals(self) -> list[Proposal]:
         if not self._proposals_path.exists():
             return []
-        raw = json.loads(self._proposals_path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(self._proposals_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            logger.warning("Corrupt proposals file %s; returning empty list", self._proposals_path)
+            return []
         return [_parse_proposal(p) for p in raw.get("proposals", [])]
 
     # -- decisions ------------------------------------------------------------

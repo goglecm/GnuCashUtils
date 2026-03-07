@@ -104,7 +104,7 @@
         <label style="font-weight:600;">This receipt corresponds to this transaction</label>
     </div>
     <div class="field"><label>Source</label><div class="value">{{ proposal.evidence.receipt.source_path }}</div></div>
-    {% if proposal.evidence.receipt.parsed_total %}
+    {% if proposal.evidence.receipt.parsed_total is not none %}
     <div class="field"><label>Total</label><div class="value amount">&pound;{{ proposal.evidence.receipt.parsed_total }}</div></div>
     {% endif %}
     {% if proposal.evidence.receipt.line_items %}

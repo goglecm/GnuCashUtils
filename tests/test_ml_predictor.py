@@ -187,6 +187,45 @@ class TestCategoryPredictor:
             assert "LLM suggestion" in proposal.rationale
 
 
+    def test_single_transaction_does_not_crash(self) -> None:
+        """< 2 categorized transactions → falls back to heuristic."""
+        txs = [
+            Transaction(
+                tx_id="t1", posted_date=date(2025, 1, 1),
+                description="Tesco", currency="GBP", amount=Decimal("10"),
+                splits=[Split(account_path="Expenses:Food", amount=Decimal("10"))],
+                original_category="Expenses:Food",
+            ),
+        ]
+        predictor = CategoryPredictor(historical_transactions=txs)
+        tx = _make_target_tx(desc="Aldi Store")
+        proposal = predictor.propose(tx, [], None)
+        assert proposal.confidence > 0
+
+    def test_single_category_does_not_crash(self) -> None:
+        """All history in one category → falls back, doesn't crash SGDClassifier."""
+        txs = []
+        for i in range(5):
+            txs.append(Transaction(
+                tx_id=f"t{i}", posted_date=date(2025, 1, i + 1),
+                description=f"Tesco {i}", currency="GBP", amount=Decimal("10"),
+                splits=[Split(account_path="Expenses:Food", amount=Decimal("10"))],
+                original_category="Expenses:Food",
+            ))
+        predictor = CategoryPredictor(historical_transactions=txs)
+        tx = _make_target_tx(desc="Sainsburys")
+        proposal = predictor.propose(tx, [], None)
+        assert proposal.confidence > 0
+
+    def test_refund_detection_none_account_name(self) -> None:
+        """Transactions with empty account_name should skip refund detection."""
+        predictor = CategoryPredictor(historical_transactions=_make_history())
+        tx = _make_target_tx(desc="Refund from Store")
+        tx.account_name = ""
+        proposal = predictor.propose(tx, [], None)
+        assert "Refund detected" not in proposal.rationale
+
+
 class TestFeedbackTrainer:
 
     def test_record_feedback_to_state(self, tmp_path: Path) -> None:

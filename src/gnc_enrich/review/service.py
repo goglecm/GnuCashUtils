@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from gnc_enrich.config import LlmConfig, LlmMode
 from gnc_enrich.domain.models import EmailEvidence, Proposal, ReceiptEvidence, ReviewDecision, SkipRecord
 from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
 from gnc_enrich.state.repository import StateRepository
@@ -17,10 +18,25 @@ class ReviewQueueService:
 
     def __init__(self, state_repo: StateRepository) -> None:
         self._state = state_repo
-        self._feedback = FeedbackTrainer(state_dir=state_repo._dir)
+        self._feedback = FeedbackTrainer(state_dir=state_repo.state_dir)
+        self._llm_config = self._load_llm_config()
         self._proposals: list[Proposal] = []
         self._decided_ids: set[str] = set()
         self._reload()
+
+    def _load_llm_config(self) -> LlmConfig:
+        """Load LLM config from run metadata, falling back to disabled."""
+        meta = self._state.load_metadata("run_config")
+        if not meta:
+            return LlmConfig()
+        try:
+            return LlmConfig(
+                mode=LlmMode(meta.get("llm_mode", "disabled")),
+                endpoint=meta.get("llm_endpoint", ""),
+                model_name=meta.get("llm_model", ""),
+            )
+        except (ValueError, KeyError):
+            return LlmConfig()
 
     def _reload(self) -> None:
         self._proposals = self._state.load_proposals()
@@ -119,9 +135,11 @@ class ReviewQueueService:
         if not approved_emails and not approved_receipt:
             return decision
 
-        predictor = CategoryPredictor()
+        predictor = CategoryPredictor(llm_config=self._llm_config)
 
         if approved_receipt and approved_receipt.line_items:
+            from copy import deepcopy
+            approved_receipt = deepcopy(approved_receipt)
             expanded = predictor.describe_terse_items(approved_receipt)
             if expanded != [it.description for it in approved_receipt.line_items]:
                 for it, desc in zip(approved_receipt.line_items, expanded):

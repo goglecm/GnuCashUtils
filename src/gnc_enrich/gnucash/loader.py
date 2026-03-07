@@ -332,27 +332,12 @@ class GnuCashWriter:
                 if desc_el is not None:
                     desc_el.text = change["description"]
 
-            if "splits" in change:
+            if "splits" in change and change["splits"]:
                 splits_el = trn_el.find("trn:splits", _NS)
                 if splits_el is not None:
-                    for sp_change in change["splits"]:
-                        target_guid = account_guid_by_path.get(sp_change["account_path"])
-                        if not target_guid:
-                            continue
-                        for sp_el in splits_el.findall("trn:split", _NS):
-                            acct_el = sp_el.find("split:account", _NS)
-                            if acct_el is None:
-                                continue
-                            acct_path = loader._account_paths.get(_text(acct_el), "")
-                            top = acct_path.split(":")[0] if acct_path else ""
-                            if top in _TARGET_ACCOUNTS:
-                                acct_el.text = target_guid
-                                if sp_change.get("memo"):
-                                    memo_el = sp_el.find("split:memo", _NS)
-                                    if memo_el is None:
-                                        memo_el = etree.SubElement(sp_el, "{%s}memo" % _NS["split"])
-                                    memo_el.text = sp_change["memo"]
-                                break
+                    self._apply_split_changes(
+                        splits_el, change["splits"], account_guid_by_path, loader,
+                    )
 
         output = source if in_place else source.with_suffix(".enriched.gnucash")
 
@@ -362,6 +347,76 @@ class GnuCashWriter:
 
         logger.info("Wrote changes to %s", output)
         return output
+
+    @staticmethod
+    def _decimal_to_fraction(amount_str: str) -> str:
+        """Convert a decimal amount string to GnuCash fraction format (e.g. '25.00' -> '2500/100')."""
+        d = Decimal(amount_str)
+        num = int(d * 100)
+        return f"{num}/100"
+
+    def _apply_split_changes(
+        self,
+        splits_el: etree._Element,
+        sp_changes: list[dict],
+        account_guid_by_path: dict[str, str],
+        loader: GnuCashLoader,
+    ) -> None:
+        """Replace target splits with user-specified splits, updating amounts."""
+        import uuid as _uuid
+
+        target_els = []
+        for sp_el in splits_el.findall("trn:split", _NS):
+            acct_el = sp_el.find("split:account", _NS)
+            if acct_el is None:
+                continue
+            acct_path = loader._account_paths.get(_text(acct_el), "")
+            top = acct_path.split(":")[0] if acct_path else ""
+            if top in _TARGET_ACCOUNTS:
+                target_els.append(sp_el)
+
+        applied = 0
+        for sp_change in sp_changes:
+            target_guid = account_guid_by_path.get(sp_change["account_path"])
+            if not target_guid:
+                logger.warning("No GUID for account %s; skipping split", sp_change["account_path"])
+                continue
+
+            frac = self._decimal_to_fraction(sp_change["amount"])
+
+            if applied < len(target_els):
+                sp_el = target_els[applied]
+                acct_el = sp_el.find("split:account", _NS)
+                acct_el.text = target_guid
+                val_el = sp_el.find("split:value", _NS)
+                if val_el is not None:
+                    val_el.text = frac
+                qty_el = sp_el.find("split:quantity", _NS)
+                if qty_el is not None:
+                    qty_el.text = frac
+            else:
+                sp_el = etree.SubElement(splits_el, "{%s}split" % _NS["trn"])
+                id_el = etree.SubElement(sp_el, "{%s}id" % _NS["split"], type="guid")
+                id_el.text = _uuid.uuid4().hex
+                state_el = etree.SubElement(sp_el, "{%s}reconciled-state" % _NS["split"])
+                state_el.text = "n"
+                val_el = etree.SubElement(sp_el, "{%s}value" % _NS["split"])
+                val_el.text = frac
+                qty_el = etree.SubElement(sp_el, "{%s}quantity" % _NS["split"])
+                qty_el.text = frac
+                acct_el = etree.SubElement(sp_el, "{%s}account" % _NS["split"], type="guid")
+                acct_el.text = target_guid
+
+            if sp_change.get("memo"):
+                memo_el = sp_el.find("split:memo", _NS)
+                if memo_el is None:
+                    memo_el = etree.SubElement(sp_el, "{%s}memo" % _NS["split"])
+                memo_el.text = sp_change["memo"]
+
+            applied += 1
+
+        for j in range(applied, len(target_els)):
+            splits_el.remove(target_els[j])
 
     def _ensure_accounts_exist(
         self, book: etree._Element, category_paths: set[str], loader: GnuCashLoader

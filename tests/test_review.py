@@ -234,6 +234,32 @@ class TestReviewWebApp:
         pos_jan25 = html.index("25/01/2025")
         assert pos_jan15 < pos_jan20 < pos_jan25
 
+    def test_queue_sort_handles_none_tx_date(self, tmp_path: Path) -> None:
+        state = StateRepository(tmp_path)
+        proposals = [
+            Proposal(
+                proposal_id="pa", tx_id="txa",
+                suggested_description="A", suggested_splits=[],
+                confidence=0.5, rationale="r",
+                tx_date=date(2025, 3, 1), tx_amount=Decimal("10"),
+                original_description="A",
+            ),
+            Proposal(
+                proposal_id="pb", tx_id="txb",
+                suggested_description="B", suggested_splits=[],
+                confidence=0.5, rationale="r",
+                tx_date=None, tx_amount=None,
+                original_description="B",
+            ),
+        ]
+        state.save_proposals(proposals)
+        svc = ReviewQueueService(state)
+        app = create_app(svc)
+        app.config["TESTING"] = True
+        client = app.test_client()
+        resp = client.get("/queue")
+        assert resp.status_code == 200
+
     def test_nonexistent_proposal_redirects(self, client) -> None:
         resp = client.get("/review/nonexistent", follow_redirects=False)
         assert resp.status_code == 302

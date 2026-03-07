@@ -2,7 +2,7 @@
 
 ## Status: Implemented (v1)
 
-All modules have been implemented with full test coverage (260 tests).
+All modules have been implemented with full test coverage (280 tests).
 
 ## Package Layout
 
@@ -88,19 +88,19 @@ src/gnc_enrich/
 | Test File | Tests | Coverage Area |
 |-----------|-------|---------------|
 | `test_config_and_domain.py` | 12 | Config defaults, domain model creation, enum values |
-| `test_state_repository.py` | 14 | JSON/JSONL persistence roundtrips for all state types incl. Proposal original fields |
+| `test_state_repository.py` | 16 | JSON/JSONL persistence roundtrips for all state types incl. Proposal original fields and None-field handling |
 | `test_gnucash_loader.py` | 17 | XML loading, candidate filtering rules, backup, write-back |
-| `test_email_pipeline.py` | 25 | EML parsing, amount extraction, body filtering (HTML/signature/quote stripping), index build/search |
+| `test_email_pipeline.py` | 32 | EML parsing, amount extraction, body filtering (HTML/signature/quote stripping, entity decoding, edge cases), index build/search |
 | `test_receipt_pipeline.py` | 17 | OCR extraction, total parsing, repository operations |
-| `test_matching.py` | 20 | Email/receipt scoring, tolerance boundaries, double-match, tolerance-zero exact matching, no-amount exclusion |
-| `test_ml_predictor.py` | 12 | Training, prediction, fallback, LLM path, feedback |
+| `test_matching.py` | 22 | Email/receipt scoring, tolerance boundaries, double-match, tolerance-zero exact matching, no-amount exclusion, empty-amount exclusion |
+| `test_ml_predictor.py` | 15 | Training, prediction, fallback, LLM path, feedback |
 | `test_pipeline.py` | 6 | End-to-end pipeline orchestration |
-| `test_apply_engine.py` | 11 | Dry-run, apply, backup, journal, audit, rollback |
-| `test_review.py` | 18 | Queue service logic + Flask test client routes incl. before/after view, sort order, select-all button |
+| `test_apply_engine.py` | 14 | Dry-run, apply, backup, journal (original description verification), audit, rollback |
+| `test_review.py` | 19 | Queue service logic + Flask test client routes incl. before/after view, sort order, select-all button, None tx_date sort |
 | `test_integration.py` | 3 | Full run->review->apply cycle, Flask client flow, CLI dispatch |
 | `test_cli.py` | 4 | Parser contracts, flag defaults, LLM args |
 | `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
 | `test_system.py` | 17 | Full system tests: multi-subdir emails, review cycle, apply+rollback, Flask webapp |
-| `test_cli_flags.py` | 34 | Every CLI flag: verbose, run/review/apply flags, dispatch tests |
+| `test_cli_flags.py` | 36 | Every CLI flag: verbose, run/review/apply flags, dispatch tests |
 | `test_system_scenarios.py` | 11 | Scenarios: imbalance-only, zero candidates, date window, multiple receipts, nested emails, empty book, realistic format |
-| **Total** | **260** | |
+| **Total** | **280** | |

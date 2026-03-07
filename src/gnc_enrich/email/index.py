@@ -61,6 +61,9 @@ class EmailIndexRepository:
         manifest_path = state_dir / "email_index_manifest.json"
         state_dir.mkdir(parents=True, exist_ok=True)
 
+        self._entries.clear()
+        self._indexed_files.clear()
+
         if manifest_path.exists():
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self._indexed_files = set(manifest.get("indexed_files", []))

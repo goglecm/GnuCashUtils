@@ -17,7 +17,7 @@ The system must:
 ## 2. Scope
 
 ### In Scope
-- Input GnuCash format: **XML (`.gnucash`)** — gzip-compressed XML.
+- Input GnuCash format: **XML (`.gnucash`)** — gzip-compressed or plain XML (auto-detected via gzip magic bytes). Output is always gzip-compressed.
 - Email ingestion from directory of `.eml` files, **including subdirectories** (recursive scan).
 - Receipt ingestion from directory of images: **`jpeg` / `jpg` / `png` / `heic` / `heif`**.
 - Matching transactions with evidence windows around transaction date.
@@ -36,6 +36,8 @@ The system must:
 - Bulk approval UX.
 - Non-GBP transaction editing.
 - Future-dated transaction editing.
+- Similar historical transactions panel in review UI (deferred to post-v1).
+- Split editing by percentage (v1 supports fixed amounts only).
 
 ---
 
@@ -47,16 +49,16 @@ The system must:
 2. **Only GBP transactions** are eligible.
    - Mixed-currency transaction: **skip entirely**.
 3. **Future transactions are excluded**.
-4. **Transfers between user-owned accounts are excluded** from recategorization.
+4. **Transfers between user-owned accounts are excluded** from recategorization. A transaction is a transfer when **all** splits point to accounts of type `BANK`, `ASSET`, `LIABILITY`, `CASH`, `CREDIT`, or `EQUITY`.
 5. **User approval required per transaction** before any write.
 6. **User can skip** any transaction.
 7. Skipped transactions are persisted and excluded in subsequent runs, with an option to reload/reconsider later.
 8. Existing non-empty description should be **appended to**, not overwritten.
 9. Description date formatting must use **GB format** (`DD/MM/YYYY`).
-10. Refunds should be categorized to the **same category as the original transaction** when identifiable.
+10. Refunds should be categorized to the **same category as the original transaction** when identifiable. Refunds are detected by checking whether the bank-side split (`account_name`) has a positive amount (incoming money). If the ML classifier predicts the original category with probability ≥ 0.4, it is used.
 11. **Not all transactions have emails** associated with them, and **not all emails have transactions** associated with them. The system must handle both cases gracefully.
 12. **Receipts may often be absent** — most of the time there may be no receipts at all. The system must not require receipts to function.
-13. **New categories are allowed** — when a transaction does not fit any existing category, the system may propose a new category name. The user can approve it, and it will be written to the GnuCash file as a new account.
+13. **New categories are allowed** — when a transaction does not fit any existing category, the system may propose a new category name. The user can approve it, and it will be written to the GnuCash file as a new account of type `EXPENSE` with currency `GBP`. Any missing intermediate account path segments (e.g., `Food` in `Expenses:Food:Takeaway`) are created automatically.
 14. **Evidence approval drives enrichment** — the user approves which evidence (emails, receipts) is relevant to a transaction. Approved evidence content feeds into the description and split details.
 
 ---
@@ -71,8 +73,8 @@ The system must:
 - `--state-dir` (required): directory for indexes/cache/audit metadata.
 
 ## 4.2 Outputs
-- Updated GnuCash file (in-place by default, optional copy mode).
-- Backup snapshot(s) before write.
+- Updated GnuCash file (in-place by default; non-in-place writes to `{name}.enriched.gnucash`).
+- Backup snapshot(s) before write (timestamped: `{stem}.{YYYYMMDDTHHMMSSZ}{suffix}`).
 - Audit trail (structured JSONL + optional human-readable report).
 - Persisted indexes:
   - email index
@@ -80,7 +82,7 @@ The system must:
   - model features/inference cache
   - skipped transaction state
   - user feedback/training data
-- Dry-run proposal report.
+- Dry-run proposal report (`dry_run_report.txt` in the state directory).
 
 ---
 
@@ -94,8 +96,9 @@ User-configurable parameters must include at least:
 - Skip-list behavior (exclude by default, include with explicit flag).
 - LLM integration mode:
   - offline/local model
-  - online model endpoint
+  - online model endpoint (with optional API key for `Authorization: Bearer` header)
   - disabled
+- LLM configuration (mode, endpoint, model name) is persisted in `run_config.json` and automatically loaded during the review phase, so the user need not re-specify it.
 
 ---
 
@@ -105,21 +108,24 @@ User-configurable parameters must include at least:
 - **Language**: Python 3.11+
 - **GnuCash parsing**: `lxml` for XML (gzip-compressed `.gnucash` files)
 - **OCR**: `pytesseract` + `Pillow` + `pillow-heif`, with optional LLM fallback
-- **ML**: scikit-learn TF-IDF + SGDClassifier, optional LLM (local/remote) for rationale
+- **ML**: scikit-learn TF-IDF + SGDClassifier (`joblib` for serialization), optional LLM (local/remote) for rationale
 - **Web framework**: Flask + Jinja2 for review UI
 - **State persistence**: JSON/JSONL flat files
 - **Email parsing**: Python stdlib `email` module
+- **HTTP**: `requests` for LLM API calls (lazily imported; only used when LLM is enabled)
 
 ### 6.2 Components
 1. **GnuCash Loader/Writer**
-   - Detect gzip-compressed XML.
-   - Parse accounts, splits, transactions, currencies.
-   - Validate and apply approved mutations.
+   - Detect gzip vs plain XML (magic byte check); output always gzip.
+   - Parse accounts (with cached path lookup), splits (fraction format), transactions, currencies.
+   - Validate and apply approved mutations (re-point account GUIDs, update split values/quantities, create new split elements for split transactions, remove surplus target splits).
 2. **Candidate Selector**
    - Select only unresolved target transactions.
    - Enforce GBP-only, non-future, non-transfer constraints.
 3. **Email Pipeline**
-   - Parse `.eml` metadata and body.
+   - Parse `.eml` metadata and body (plain text preferred over HTML; HTML tags stripped and entities decoded).
+   - Filter body: remove signature blocks (RFC 3676 `-- `, `---`, `___`, `Sent from`, `Get Outlook`) and quoted replies (`>` prefixed lines).
+   - Extract GBP amounts from subject + filtered body using `£`/`GBP` regex.
    - Build JSONL index optimized for amount/date/merchant/entity retrieval.
 4. **Receipt Pipeline**
    - OCR receipts and detect line items/totals.
@@ -128,12 +134,18 @@ User-configurable parameters must include at least:
    - Build evidence packets from emails, receipts, history.
 6. **ML/AI Suggestion Engine**
    - Category prediction + confidence score + rationale snippets.
-   - Description proposal in GB date style.
+   - Description proposal in GB date style; merchant name extracted from email sender domain.
+   - Keyword-based fallback (Food, Transport, Entertainment, Utilities) when insufficient training data (< 2 categorized transactions or < 2 categories). Default: `Expenses:Miscellaneous` at confidence 0.3.
+   - LLM consulted only when ML confidence < 0.6.
+   - Evidence-driven description enrichment joins base, email detail, and receipt detail with ` | ` separator.
 7. **Review Web App**
-   - One transaction at a time review.
+   - One transaction at a time review via routes: `/` (auto-redirect to next pending or done page), `/queue` (full queue sorted by date), `/review/<id>` (individual review).
    - Evidence display, edit controls, approve/skip.
+   - Already-decided proposals shown in read-only mode.
+   - Invalid split amounts silently skipped; empty splits fall back to ML-suggested splits.
 8. **Apply Engine**
    - Dry-run report or write mode with backup + audit.
+   - Receipt files moved to processed directory during apply (not during review), only when totals are amount-compatible. Filename conflicts resolved with `_{counter}` suffix.
 9. **Feedback & Learning Store**
    - Capture user overrides and approvals for retraining/improved ranking.
 
@@ -160,9 +172,9 @@ User-configurable parameters must include at least:
 - Provide incremental rebuild options if new emails appear.
 
 ## 7.3 Receipt Matching & OCR
-- Supported input types: jpg/jpeg/png/heic/heif.
+- Supported input types: jpg/jpeg/png/heic/heif (case-insensitive file extension matching, deduplicated).
 - OCR should prioritize high-accuracy extraction on low-legibility documents.
-- Optional LLM fallback when Tesseract fails to extract totals.
+- Optional LLM fallback when Tesseract fails to extract totals (only when total is missing; not used for line items alone).
 - One receipt may match only one transaction.
 - If approved and receipt/transaction totals are compatible:
   - apply decision
@@ -174,7 +186,7 @@ User-configurable parameters must include at least:
 ## 7.4 Split Inference from Receipts
 - Detect line items and group multiple same-category items into single split buckets.
 - Discounts may be present and should be proportionally or explicitly allocated according to extracted structure.
-- User can edit splits as fixed amounts or percentages.
+- User can edit splits as fixed amounts.
 
 ## 7.5 Evidence-Driven Description Enrichment
 - When the user approves that specific emails correspond to a transaction, the description should be enriched with purchase details extracted from the email content (e.g., order items, merchant name, service description).
@@ -207,7 +219,6 @@ User-configurable parameters must include at least:
   - matched emails (all candidates + relevance rank); displayed as sender, subject, and cleaned body text only (no raw headers/metadata)
   - select/deselect all button for email checkboxes
   - matched receipt OCR summary + source image preview/path
-  - similar historical transactions
   - model confidence and rationale
 
 ## 9.3 User Actions
@@ -215,9 +226,8 @@ User-configurable parameters must include at least:
 - Edit description.
 - Edit category.
 - Edit/add/remove splits.
-- Adjust split amounts by amount or percentage.
-- Skip transaction.
-- Mark for later reconsideration (reloadable from skipped pool).
+- Adjust split amounts by fixed amount.
+- Skip transaction (persisted; reloadable via `--include-skipped`).
 
 ## 9.4 Approval Requirement
 - No transaction may be written unless explicitly approved.
@@ -231,11 +241,13 @@ User-configurable parameters must include at least:
 - `apply`: write approved changes.
 
 ## 10.2 Backup
-- Backup point must be created before any apply operation.
-- Backup policy configurable (location and retention).
+- Backup is created by default before any apply operation (`--create-backup` defaults to `true`; suppressible with `--no-backup`).
+- Backup location defaults to `<state-dir>/backups`; overridable with `--backup-dir`.
+- Backup files named `{stem}.{YYYYMMDDTHHMMSSZ}{suffix}` (UTC timestamp).
 
 ## 10.3 Undo
-- Maintain an edit journal sufficient to rollback applied session changes.
+- Maintain an edit journal (`apply_journal.jsonl`) recording original description, new description, action, and backup path for each changed transaction.
+- Rollback restores the most recent backup file by timestamp.
 
 ## 10.4 Audit Log
 For every candidate and final action, capture:
@@ -285,8 +297,8 @@ python -m gnc_enrich review --state-dir /path/state --host 127.0.0.1 --port 7860
 
 ```bash
 python -m gnc_enrich apply --state-dir /path/state --dry-run
-python -m gnc_enrich apply --state-dir /path/state --create-backup --backup-dir /path/backups
-python -m gnc_enrich apply --state-dir /path/state --in-place
+python -m gnc_enrich apply --state-dir /path/state --backup-dir /path/backups
+python -m gnc_enrich apply --state-dir /path/state --no-backup --no-in-place
 ```
 
 Notes:
@@ -294,6 +306,8 @@ Notes:
 - Review is web-based but locally hosted.
 - Global `-v` / `--verbose` flag enables DEBUG-level trace logging for all subcommands.
 - After `pip install`, the `gnc-enrich` console script is available (equivalent to `python -m gnc_enrich`).
+- `--create-backup` (default: true) and `--in-place` (default: true) can be negated with `--no-backup` and `--no-in-place`.
+- If `--emails-dir` or `--receipts-dir` does not exist, the system logs a message and continues without that evidence source.
 
 ---
 
@@ -308,9 +322,9 @@ Persist at least:
 - `feedback_events.jsonl` — user feedback for retraining
 - `audit_log.jsonl` — complete audit trail
 - `apply_journal.jsonl` — undo journal for rollback
-- `run_config.json` — metadata from last pipeline run
+- `run_config.json` — metadata from last pipeline run (gnucash path, evidence directories, LLM configuration)
 
-State includes schema version headers for forward migration.
+State includes schema version headers for forward migration. Corrupt JSONL files are recovered by skipping unparseable lines with a warning. Corrupt `proposals.json` returns an empty proposal list.
 
 ---
 
@@ -347,9 +361,10 @@ A v1 implementation is acceptable when:
 
 - Local-first and offline-capable by default.
 - Optional online/offline LLM integration.
-- Deterministic, reproducible proposal generation when model settings are fixed.
-- Robust error handling and resumable operations.
+- Deterministic, reproducible proposal generation when model settings are fixed (`random_state=42` for the ML classifier).
+- Robust error handling and resumable operations: malformed GnuCash fractions, corrupt state files, missing evidence directories, and unparseable email dates all degrade gracefully with warnings rather than crashing.
 - Clear logs suitable for debugging and compliance review.
+- Licensed under **GPL-3.0-only** (compatible with GnuCash's GPL-2.0).
 
 ---
 

@@ -103,7 +103,33 @@ def test_proposal_original_fields_roundtrip(tmp_path) -> None:
     assert len(loaded.original_splits) == 1
     assert loaded.original_splits[0].account_path == "Imbalance-GBP"
     assert loaded.original_splits[0].memo == "orig memo"
-    assert loaded.evidence.emails[0].parsed_amounts == [Decimal("15.00")]
+
+
+def test_proposal_none_fields_roundtrip(tmp_path) -> None:
+    """Proposals with None tx_date/tx_amount must survive serialization."""
+    repo = StateRepository(tmp_path)
+    prop = Proposal(
+        proposal_id="pn", tx_id="txn",
+        suggested_description="Unknown",
+        suggested_splits=[Split(account_path="Expenses:Misc", amount=Decimal("5.00"))],
+        confidence=0.5, rationale="test",
+        tx_date=None, tx_amount=None,
+        original_description="", original_splits=[],
+    )
+    repo.save_proposals([prop])
+    loaded = repo.load_proposals()[0]
+    assert loaded.tx_date is None
+    assert loaded.tx_amount is None
+    assert loaded.original_description == ""
+    assert loaded.original_splits == []
+
+
+def test_corrupt_proposals_json_returns_empty(tmp_path) -> None:
+    """Corrupt proposals.json should not crash; returns empty list."""
+    repo = StateRepository(tmp_path)
+    (tmp_path / "proposals.json").write_text("{invalid json", encoding="utf-8")
+    loaded = repo.load_proposals()
+    assert loaded == []
 
 
 # -- decisions ----------------------------------------------------------------

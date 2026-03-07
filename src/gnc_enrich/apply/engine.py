@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from gnc_enrich.domain.models import AuditEntry, ReviewDecision, Split, Transaction
+from gnc_enrich.domain.models import AuditEntry, ReviewDecision
 from gnc_enrich.gnucash.loader import GnuCashLoader, GnuCashWriter
 from gnc_enrich.receipt.repository import ReceiptRepository
 from gnc_enrich.state.repository import StateRepository
@@ -70,8 +70,28 @@ class ApplyEngine:
         logger.info("Dry-run report written to %s", report_path)
         return report_path
 
-    def apply(self, state_dir: Path) -> None:
-        """Apply all approved/edited decisions to the GnuCash file."""
+    def apply(
+        self,
+        state_dir: Path,
+        *,
+        create_backup: bool = True,
+        backup_dir: Path | None = None,
+        in_place: bool = True,
+    ) -> None:
+        """Apply all approved/edited decisions to the GnuCash file.
+
+        Parameters
+        ----------
+        state_dir:
+            Directory containing proposals, decisions, and run metadata.
+        create_backup:
+            Whether to create a backup before writing (default True).
+        backup_dir:
+            Where to store the backup.  Falls back to ``state_dir / "backups"``.
+        in_place:
+            Write changes back to the original file when True (default);
+            otherwise write to ``<original>.enriched.gnucash``.
+        """
         state = StateRepository(state_dir)
 
         meta = state.load_metadata("run_config")
@@ -79,7 +99,8 @@ class ApplyEngine:
             raise RuntimeError("No run_config metadata found; run the pipeline first")
 
         gnucash_path = Path(meta["gnucash_path"])
-        processed_receipts_dir = Path(meta.get("processed_receipts_dir", ""))
+        raw_receipts_dir = meta.get("processed_receipts_dir", "")
+        processed_receipts_dir = Path(raw_receipts_dir) if raw_receipts_dir else None
 
         proposals = state.load_proposals()
         decisions = state.load_decisions()
@@ -96,14 +117,18 @@ class ApplyEngine:
             logger.info("No approved decisions to apply")
             return
 
-        backup_dir = state_dir / "backups"
+        resolved_backup_dir = backup_dir or (state_dir / "backups")
         writer = GnuCashWriter()
-        backup_path = writer.create_backup(gnucash_path, backup_dir)
+        backup_path = None
+        if create_backup:
+            backup_path = writer.create_backup(gnucash_path, resolved_backup_dir)
 
         journal: list[dict] = []
         loader = GnuCashLoader()
         loader.load_transactions(gnucash_path)
         tree = loader.get_tree()
+        if tree is None:
+            raise RuntimeError(f"Failed to parse GnuCash file: {gnucash_path}")
 
         changes: dict[str, dict] = {}
         for tx_id, dec in approved_decisions.items():
@@ -119,14 +144,14 @@ class ApplyEngine:
 
             original_desc = ""
             if prop:
-                original_desc = prop.suggested_description
+                original_desc = prop.original_description or prop.suggested_description
 
             journal.append({
                 "tx_id": tx_id,
                 "original_description": original_desc,
                 "new_description": dec.final_description,
                 "action": dec.action,
-                "backup_path": str(backup_path),
+                "backup_path": str(backup_path) if backup_path else "",
             })
 
             state.append_audit(AuditEntry(
@@ -142,11 +167,11 @@ class ApplyEngine:
                 timestamp=datetime.now(timezone.utc),
             ))
 
-        writer.write_changes(gnucash_path, tree, changes, in_place=True)
+        writer.write_changes(gnucash_path, tree, changes, in_place=in_place)
 
         if processed_receipts_dir:
             self._move_compatible_receipts(
-                proposals, approved_decisions, processed_receipts_dir, loader
+                proposals, approved_decisions, processed_receipts_dir
             )
 
         journal_path = state_dir / "apply_journal.jsonl"
@@ -198,7 +223,6 @@ class ApplyEngine:
         proposals,
         approved_decisions: dict[str, ReviewDecision],
         processed_dir: Path,
-        loader: GnuCashLoader,
         amount_tolerance: float = 0.50,
     ) -> None:
         """Move receipts whose total matches the approved transaction amount."""

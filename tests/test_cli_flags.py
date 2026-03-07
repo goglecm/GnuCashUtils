@@ -303,8 +303,12 @@ class TestApplyFlags:
         ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s", "--create-backup"])
         assert ns.create_backup is True
 
-    def test_create_backup_default_false(self) -> None:
+    def test_create_backup_default_true(self) -> None:
         ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s"])
+        assert ns.create_backup is True
+
+    def test_no_backup_flag(self) -> None:
+        ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s", "--no-backup"])
         assert ns.create_backup is False
 
     def test_backup_dir_flag(self, tmp_path: Path) -> None:
@@ -322,8 +326,12 @@ class TestApplyFlags:
         ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s", "--in-place"])
         assert ns.in_place is True
 
-    def test_in_place_default_false(self) -> None:
+    def test_in_place_default_true(self) -> None:
         ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s"])
+        assert ns.in_place is True
+
+    def test_no_in_place_flag(self) -> None:
+        ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s", "--no-in-place"])
         assert ns.in_place is False
 
     def test_apply_dry_run_dispatch(self, cli_env: dict[str, Path]) -> None:

@@ -17,3 +17,9 @@ Key standards:
 - LLM calls: always in try/except; send `Authorization: Bearer` when api_key is set
 - All state files include a `_schema_version` header line/key
 - No dead code: remove unused variables, unreachable code, unused imports
+
+Documentation and comment standards (see `developers_guide.mdc` § "Documentation and Comment Standards"):
+
+- All documentation and comments must use **British English** with correct grammar and complete punctuation.
+- Comments must convey **intention**, not just what/how/why. Explain the trade-off, constraint, or design decision — do not restate what a competent reader can already see in the code.
+- These standards apply to docstrings, inline comments, README, spec files, and `.mdc` files alike.

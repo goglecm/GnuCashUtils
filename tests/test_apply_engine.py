@@ -2,7 +2,7 @@
 
 import gzip
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -35,18 +35,27 @@ def _setup_state(tmp_path: Path) -> tuple[Path, Path]:
             suggested_description="Card Payment - Tesco 15/01/2025",
             suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
             confidence=0.85, rationale="ML + email match",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="Card Payment",
+            original_splits=[Split(account_path="Unspecified", amount=Decimal("25.00"))],
         ),
         Proposal(
             proposal_id="p2", tx_id="tx_unspec2",
             suggested_description="Direct Debit 01/02/2025",
             suggested_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
             confidence=0.6, rationale="Heuristic",
+            tx_date=date(2025, 2, 1), tx_amount=Decimal("9.50"),
+            original_description="Direct Debit",
+            original_splits=[Split(account_path="Unspecified", amount=Decimal("9.50"))],
         ),
         Proposal(
             proposal_id="p3", tx_id="tx_imbalance1",
             suggested_description="POS Transaction 20/01/2025",
             suggested_splits=[Split(account_path="Expenses:Miscellaneous", amount=Decimal("32.00"))],
             confidence=0.4, rationale="Low confidence",
+            tx_date=date(2025, 1, 20), tx_amount=Decimal("32.00"),
+            original_description="POS Transaction",
+            original_splits=[Split(account_path="Imbalance-GBP", amount=Decimal("32.00"))],
         ),
     ]
     state.save_proposals(proposals)
@@ -147,6 +156,19 @@ class TestApply:
         assert len(audit) == 2
         assert audit[0].action in ("approve", "edit")
 
+    def test_journal_stores_original_description(self, tmp_path: Path) -> None:
+        _, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        journal_path = state_dir / "apply_journal.jsonl"
+        entries = [
+            json.loads(l) for l in journal_path.read_text().splitlines()
+            if l.strip() and '"_schema_version"' not in l
+        ]
+        tx1_entry = next(e for e in entries if e["tx_id"] == "tx_unspec1")
+        assert tx1_entry["original_description"] == "Card Payment"
+
     def test_apply_skips_when_no_decisions(self, tmp_path: Path) -> None:
         gnucash = tmp_path / "book.gnucash"
         with gzip.open(gnucash, "wb") as f:
@@ -159,6 +181,26 @@ class TestApply:
 
         engine = ApplyEngine()
         engine.apply(state_dir)
+
+    def test_apply_updates_split_accounts(self, tmp_path: Path) -> None:
+        """Writer must re-point target splits to the approved category."""
+        gnucash, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        loader = GnuCashLoader()
+        txs = loader.load_transactions(gnucash)
+        tx_map = {t.tx_id: t for t in txs}
+        food_splits = [s for s in tx_map["tx_unspec1"].splits if s.account_path == "Expenses:Food"]
+        assert len(food_splits) == 1
+        assert food_splits[0].amount == Decimal("25.00")
+
+    def test_apply_no_backup_flag(self, tmp_path: Path) -> None:
+        gnucash, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir, create_backup=False)
+        backup_dir = state_dir / "backups"
+        assert not backup_dir.exists()
 
     def test_apply_fails_without_metadata(self, tmp_path: Path) -> None:
         state_dir = tmp_path / "state"

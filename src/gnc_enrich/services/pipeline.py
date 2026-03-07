@@ -39,6 +39,9 @@ class EnrichmentPipeline:
             "emails_dir": str(config.emails_dir),
             "receipts_dir": str(config.receipts_dir),
             "processed_receipts_dir": str(config.processed_receipts_dir),
+            "llm_mode": config.llm.mode.value,
+            "llm_endpoint": config.llm.endpoint,
+            "llm_model": config.llm.model_name,
         })
 
         skipped = state.load_skipped_ids()

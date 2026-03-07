@@ -53,9 +53,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     apply_cmd = sub.add_parser("apply", help="Apply approved changes to GnuCash")
     apply_cmd.add_argument("--state-dir", type=Path, required=True)
-    apply_cmd.add_argument("--create-backup", action="store_true")
+    apply_cmd.add_argument(
+        "--create-backup", action="store_true", default=True,
+        help="Create a timestamped backup before writing (default: true)",
+    )
+    apply_cmd.add_argument(
+        "--no-backup", action="store_false", dest="create_backup",
+        help="Skip backup creation",
+    )
     apply_cmd.add_argument("--backup-dir", type=Path)
-    apply_cmd.add_argument("--in-place", action="store_true")
+    apply_cmd.add_argument("--in-place", action="store_true", default=True)
+    apply_cmd.add_argument(
+        "--no-in-place", action="store_false", dest="in_place",
+        help="Write to a new file instead of modifying the original",
+    )
     apply_cmd.add_argument("--dry-run", action="store_true")
 
     return parser
@@ -119,7 +130,12 @@ def main(argv: list[str] | None = None) -> int:
             report = engine.generate_dry_run_report(config.state_dir)
             print(f"Dry-run report written to {report}")
         else:
-            engine.apply(config.state_dir)
+            engine.apply(
+                config.state_dir,
+                create_backup=config.create_backup,
+                backup_dir=config.backup_dir,
+                in_place=config.in_place,
+            )
             print("Changes applied successfully.")
         return 0
 

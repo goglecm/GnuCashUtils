@@ -88,9 +88,9 @@ class TestEmailMatcher:
 
         tx = _make_tx(amount="25.00", posted=date(2025, 1, 15))
         results = matcher.match(tx)
-        if results:
-            top = results[0]
-            assert top.relevance_score > 1.0
+        assert len(results) >= 1, "Expected at least one email match for £25.00"
+        top = results[0]
+        assert top.relevance_score > 1.0
 
     def test_no_match_outside_date_and_amount(self, tmp_path: Path) -> None:
         index = self._build_index(tmp_path)
@@ -112,11 +112,11 @@ class TestEmailMatcher:
         index = self._build_index(tmp_path)
         matcher = EmailMatcher(index, date_window_days=30, amount_tolerance=100.0)
 
-        tx = _make_tx(description="Netflix Subscription", posted=date(2025, 1, 20))
+        tx = _make_tx(description="Netflix Subscription", amount="15.99", posted=date(2025, 1, 20))
         results = matcher.match(tx)
-        if results:
-            netflix_results = [r for r in results if "netflix" in r.sender.lower()]
-            assert len(netflix_results) >= 1
+        assert len(results) >= 1, "Expected at least one match for Netflix with wide tolerance"
+        netflix_results = [r for r in results if "netflix" in r.sender.lower()]
+        assert len(netflix_results) >= 1
 
     def test_no_amount_emails_excluded(self, tmp_path: Path) -> None:
         """Emails with no parsed GBP amounts must not appear in match results."""
@@ -166,6 +166,28 @@ class TestEmailMatcher:
         amounts = _extract_amounts("You paid £1,400.00")
         assert len(amounts) == 1
         assert amounts[0] == Decimal("1400.00")
+
+    def test_email_with_amounts_outside_tolerance_excluded(self) -> None:
+        """An email with amounts but none within tolerance must not match."""
+        index = EmailIndexRepository()
+        index._entries = [
+            _make_email("e1", amounts=["100.00"], sent_at=datetime(2025, 1, 15, tzinfo=timezone.utc)),
+        ]
+        matcher = EmailMatcher(index, date_window_days=7, amount_tolerance=0.50)
+        tx = _make_tx(amount="25.00", posted=date(2025, 1, 15))
+        results = matcher.match(tx)
+        assert len(results) == 0
+
+    def test_email_with_empty_amounts_excluded(self) -> None:
+        """An email with no parsed amounts must never match."""
+        index = EmailIndexRepository()
+        index._entries = [
+            _make_email("e1", amounts=[], sent_at=datetime(2025, 1, 15, tzinfo=timezone.utc)),
+        ]
+        matcher = EmailMatcher(index, date_window_days=7, amount_tolerance=9999.0)
+        tx = _make_tx(amount="25.00", posted=date(2025, 1, 15))
+        results = matcher.match(tx)
+        assert len(results) == 0
 
 
 # -- Receipt matcher ----------------------------------------------------------

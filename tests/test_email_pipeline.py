@@ -73,7 +73,7 @@ class TestBodyFiltering:
         assert _strip_html("<div>  A   B  </div>") == "A B"
 
     def test_filter_body_removes_signature(self) -> None:
-        body = "Hello\nThis is a message.\n--\nJohn Doe\njohn@example.com"
+        body = "Hello\nThis is a message.\n-- \nJohn Doe\njohn@example.com"
         filtered = _filter_body(body)
         assert "John Doe" not in filtered
         assert "Hello" in filtered
@@ -91,7 +91,7 @@ class TestBodyFiltering:
         assert "My reply" in filtered
 
     def test_amounts_from_signature_excluded(self) -> None:
-        text = "You paid £50.00.\n--\nCompany Ltd, registered capital £1,000,000"
+        text = "You paid £50.00.\n-- \nCompany Ltd, registered capital £1,000,000"
         filtered = _filter_body(text)
         amounts = _extract_amounts(f"Subject {filtered}")
         assert Decimal("50.00") in amounts
@@ -101,6 +101,31 @@ class TestBodyFiltering:
         assert _extract_amounts("£1,400.00") == [Decimal("1400.00")]
         assert _extract_amounts("£1,400") == [Decimal("1400")]
         assert _extract_amounts("GBP 1,234.56") == [Decimal("1234.56")]
+
+    def test_filter_body_empty_string(self) -> None:
+        assert _filter_body("") == ""
+
+    def test_filter_body_only_signature(self) -> None:
+        assert _filter_body("-- \nJohn Doe\njohn@example.com") == ""
+
+    def test_filter_body_single_line_no_newline(self) -> None:
+        assert _filter_body("Hello world") == "Hello world"
+
+    def test_strip_html_empty_string(self) -> None:
+        assert _strip_html("") == ""
+
+    def test_extract_amounts_empty_string(self) -> None:
+        assert _extract_amounts("") == []
+
+    def test_strip_html_decodes_entities(self) -> None:
+        assert "£100" in _strip_html("&pound;100")
+        assert "£" in _strip_html("&#163;50")
+
+    def test_filter_body_preserves_dashes_in_text(self) -> None:
+        """'--see attached' should NOT trigger signature removal (only '-- ' does)."""
+        body = "Hello\n--see attached receipt\nThanks"
+        filtered = _filter_body(body)
+        assert "see attached" in filtered
 
 
 class TestEmailIndexRepository:

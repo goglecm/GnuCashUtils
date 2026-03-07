@@ -5,6 +5,7 @@ from __future__ import annotations
 import email
 import email.policy
 import hashlib
+import html as html_mod
 import logging
 import re
 from datetime import datetime, timezone
@@ -28,7 +29,7 @@ _MAX_BODY_SNIPPET = 500
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RUN_RE = re.compile(r"[ \t]{2,}")
 
-_SIGNATURE_MARKERS = {"--", "___", "---", "Sent from", "Get Outlook"}
+_SIGNATURE_MARKERS_STRIPPED = {"___", "---", "Sent from", "Get Outlook"}
 
 
 def _extract_amounts(text: str) -> list[Decimal]:
@@ -45,18 +46,24 @@ def _extract_amounts(text: str) -> list[Decimal]:
 
 
 def _strip_html(text: str) -> str:
-    """Remove HTML tags and collapse whitespace."""
+    """Remove HTML tags, decode HTML entities, and collapse whitespace."""
     text = _HTML_TAG_RE.sub(" ", text)
+    text = html_mod.unescape(text)
     text = _WHITESPACE_RUN_RE.sub(" ", text)
     return text.strip()
 
 
 def _filter_body(body_text: str) -> str:
-    """Strip signatures, quoted replies, and boilerplate from an email body."""
+    """Strip signatures, quoted replies, and boilerplate from an email body.
+
+    Handles the RFC 3676 signature delimiter ``-- `` (dash-dash-space)
+    as well as common informal markers like ``---`` or ``___``.
+    """
     lines: list[str] = []
     for line in body_text.splitlines():
-        stripped = line.strip()
-        if any(stripped.startswith(m) for m in _SIGNATURE_MARKERS):
+        raw = line.rstrip("\r\n")
+        stripped = raw.strip()
+        if raw == "-- " or any(stripped.startswith(m) for m in _SIGNATURE_MARKERS_STRIPPED):
             break
         if stripped.startswith(">"):
             continue
@@ -94,9 +101,9 @@ class EmlParser:
             sent_at = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
         body_text = _get_body_text(msg)
-        body_snippet = body_text[:_MAX_BODY_SNIPPET]
-
         filtered_body = _filter_body(body_text)
+        body_snippet = filtered_body[:_MAX_BODY_SNIPPET]
+
         amount_source = f"{subject} {filtered_body}"
         parsed_amounts = _extract_amounts(amount_source)
 

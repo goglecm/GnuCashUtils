@@ -443,7 +443,8 @@ class TestGracefulNoEvidence:
 class TestRefundDetection:
     """Rule 10: refunds should be categorized like the original transaction."""
 
-    def test_refund_detected_by_negative_amount(self) -> None:
+    def test_refund_detected_by_positive_bank_split(self) -> None:
+        """A refund has positive bank split (money flowing in)."""
         txs = []
         for i in range(1, 4):
             t = _make_tx(tx_id=f"t{i}", amount=Decimal("50.00"), desc="Tesco Groceries")
@@ -458,11 +459,17 @@ class TestRefundDetection:
 
         predictor = CategoryPredictor(historical_transactions=txs)
 
-        refund_tx = _make_tx(tx_id="t99", amount=Decimal("-50.00"), desc="Tesco Refund")
+        refund_tx = _make_tx(tx_id="t99", amount=Decimal("50.00"), desc="Tesco Refund")
+        refund_tx.account_name = "Assets:Current Account"
+        refund_tx.splits = [
+            Split(account_path="Assets:Current Account", amount=Decimal("50.00")),
+            Split(account_path="Imbalance-GBP", amount=Decimal("-50.00")),
+        ]
         proposal = predictor.propose(refund_tx, [], None)
         assert "Refund detected" in proposal.rationale
 
-    def test_refund_not_triggered_for_positive_amount(self) -> None:
+    def test_refund_not_triggered_for_normal_expense(self) -> None:
+        """Normal expenses have negative bank split (money flowing out)."""
         txs = []
         for i in range(1, 4):
             t = _make_tx(tx_id=f"t{i}", amount=Decimal("50.00"), desc="Tesco")
@@ -477,6 +484,11 @@ class TestRefundDetection:
         predictor = CategoryPredictor(historical_transactions=txs)
 
         normal_tx = _make_tx(tx_id="t99", amount=Decimal("25.00"), desc="Tesco")
+        normal_tx.account_name = "Assets:Current Account"
+        normal_tx.splits = [
+            Split(account_path="Assets:Current Account", amount=Decimal("-25.00")),
+            Split(account_path="Unspecified", amount=Decimal("25.00")),
+        ]
         proposal = predictor.propose(normal_tx, [], None)
         assert "Refund detected" not in proposal.rationale
 
