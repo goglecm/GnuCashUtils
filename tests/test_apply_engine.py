@@ -243,6 +243,34 @@ class TestApply:
         backup_dir = state_dir / "backups"
         assert not backup_dir.exists()
 
+    def test_apply_missing_proposal_only_updates_description(self, tmp_path: Path) -> None:
+        """When a decision has no matching proposal, only description is applied (splits unchanged)."""
+        gnucash = tmp_path / "book.gnucash"
+        with gzip.open(gnucash, "wb") as f:
+            f.write(SAMPLE_GNUCASH_XML.encode("utf-8"))
+
+        state_dir = tmp_path / "state"
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(gnucash)})
+        state.save_proposals([])
+
+        state.save_decision(ReviewDecision(
+            tx_id="tx_unspec1",
+            action="approve",
+            final_description="Updated without proposal",
+            final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+        ))
+
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        loader = GnuCashLoader()
+        txs = loader.load_transactions(gnucash)
+        tx = next(t for t in txs if t.tx_id == "tx_unspec1")
+        assert tx.description == "Updated without proposal"
+        assert any(s.account_path == "Unspecified" for s in tx.splits)
+
     def test_apply_fails_without_metadata(self, tmp_path: Path) -> None:
         state_dir = tmp_path / "state"
         state_dir.mkdir()

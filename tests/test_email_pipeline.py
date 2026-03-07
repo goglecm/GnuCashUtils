@@ -182,6 +182,24 @@ class TestEmailIndexRepository:
             ev_date = ev.sent_at.date() if hasattr(ev.sent_at, "date") else ev.sent_at
             assert ev_date >= min_date
 
+    def test_build_with_min_date_still_writes_old_emails_to_index_file(self, tmp_path: Path) -> None:
+        """Emails below min_date are written to the index file for future runs."""
+        emails_dir = tmp_path / "emails"
+        emails_dir.mkdir()
+        old_eml = emails_dir / "old.eml"
+        old_eml.write_text(
+            "From: old@test.com\nSubject: Old\nDate: Mon, 13 Jan 2025 10:00:00 +0000\n"
+            "Message-ID: <old@test>\n\nBody £10.00\n",
+            encoding="utf-8",
+        )
+        repo = EmailIndexRepository()
+        min_date = date(2025, 1, 20)
+        repo.build_or_load(emails_dir, tmp_path, min_date=min_date)
+        assert len(repo.entries) == 0
+        lines = [l for l in (tmp_path / "email_index.jsonl").read_text().splitlines() if l.strip()]
+        data_lines = [l for l in lines if '"_schema_version"' not in l]
+        assert len(data_lines) == 1
+
     def test_search_by_text_tokens(self, tmp_path: Path) -> None:
         repo = EmailIndexRepository()
         repo.build_or_load(FIXTURES_DIR, tmp_path)

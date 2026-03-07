@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 286 tests passing.
+> Status: **v1 Implemented** — all modules complete, 288 tests passing.
 
 ## What this project does
 
@@ -201,7 +201,7 @@ The `--state-dir` directory contains:
 ## Running tests
 
 ```bash
-pytest              # all 286 tests
+pytest              # all 288 tests
 pytest -v           # verbose
 pytest -k matching  # keyword filter
 pytest tests/test_integration.py -v  # integration only

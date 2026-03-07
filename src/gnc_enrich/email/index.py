@@ -68,9 +68,9 @@ class EmailIndexRepository:
     ) -> None:
         """Load existing index from state_dir and index any new .eml files.
 
-        When *min_date* is set, only emails with sent_at >= min_date are kept.
-        This reduces processing time by ignoring emails older than the date
-        range needed for the current candidate transactions.
+        When *min_date* is set, only emails with sent_at >= min_date are kept
+        in memory for this run. Emails below min_date are still written to the
+        index file so future runs with an earlier min_date can use them.
         """
         index_path = state_dir / "email_index.jsonl"
         manifest_path = state_dir / "email_index_manifest.json"
@@ -117,6 +117,7 @@ class EmailIndexRepository:
                     ev = self._parser.parse(eml_path)
                     ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
                     if min_date is not None and ev_date < min_date:
+                        idx_f.write(json.dumps(_serialize_evidence(ev)) + "\n")
                         self._indexed_files.add(fname)
                         continue
                     self._entries.append(ev)

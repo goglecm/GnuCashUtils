@@ -132,7 +132,7 @@ class CategoryPredictor:
         if emails:
             top = emails[0]
             rationale_parts.append(f"Top email match: {top.sender} - {top.subject}")
-            breakdown.append(f"Email evidence: {top.sender} — {top.subject[:50]}")
+            breakdown.append(f"Email evidence: {(top.sender or '')[:50]} — {(top.subject or '')[:50]}")
 
         if receipt and receipt.parsed_total is not None:
             rationale_parts.append(f"Receipt total: £{receipt.parsed_total}")

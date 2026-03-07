@@ -134,14 +134,15 @@ class ApplyEngine:
         for tx_id, dec in approved_decisions.items():
             prop = proposal_map.get(tx_id)
             is_transfer = prop and getattr(prop, "is_transfer", False)
-            splits_for_change = (
-                []
-                if is_transfer
-                else [
+            if prop is None:
+                splits_for_change = []
+            elif is_transfer:
+                splits_for_change = []
+            else:
+                splits_for_change = [
                     {"account_path": sp.account_path, "amount": str(sp.amount), "memo": sp.memo}
                     for sp in dec.final_splits
                 ]
-            )
             changes[tx_id] = {
                 "description": dec.final_description,
                 "splits": splits_for_change,
