@@ -13,7 +13,7 @@
                     &mdash;
                     {% if p.tx_amount is not none %}&pound;{{ p.tx_amount }}{% endif %}
                 </a>
-                <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ p.original_description[:60] }}</span>
+                <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ (p.original_description or '')[:60] }}</span>
             </div>
             <div style="display:flex;align-items:center;gap:0.5rem;">
                 {% if p.tx_id in decided_ids %}
@@ -47,7 +47,7 @@
                     &mdash;
                     {% if p.tx_amount is not none %}&pound;{{ p.tx_amount }}{% endif %}
                 </a>
-                <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ p.original_description[:60] }}</span>
+                <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ (p.original_description or '')[:60] }}</span>
             </div>
             <div style="display:flex;align-items:center;gap:0.5rem;">
                 {% if p.tx_id in decided_ids %}
@@ -69,7 +69,7 @@
     {% for dec in approved_decisions %}
     <div class="queue-item" style="flex-direction:column;gap:0.25rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:600;">{{ dec.final_description[:60] }}</span>
+            <span style="font-weight:600;">{{ (dec.final_description or '')[:60] }}</span>
             <span class="status-decided">Approved</span>
         </div>
         <div style="font-size:0.85rem;color:var(--muted);">

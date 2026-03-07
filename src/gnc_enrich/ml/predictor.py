@@ -131,7 +131,7 @@ class CategoryPredictor:
 
         if emails:
             top = emails[0]
-            rationale_parts.append(f"Top email match: {top.sender} - {top.subject}")
+            rationale_parts.append(f"Top email match: {(top.sender or '')[:50]} - {(top.subject or '')[:50]}")
             breakdown.append(f"Email evidence: {(top.sender or '')[:50]} — {(top.subject or '')[:50]}")
 
         if receipt and receipt.parsed_total is not None:
@@ -237,6 +237,8 @@ class CategoryPredictor:
 
     def _category_from_text(self, text: str) -> str:
         """Suggest a category from free text using keyword heuristics."""
+        if not text:
+            return ""
         text_lower = text.lower()
         keywords = {
             "Expenses:Food": ["grocery", "tesco", "sainsbury", "asda", "lidl", "aldi", "food", "restaurant", "cafe"],
@@ -251,7 +253,7 @@ class CategoryPredictor:
 
     def suggest_category_from_email(self, sender: str, subject: str, body: str) -> str:
         """Suggest a category from email sender, subject, and body (e.g. for UI hint)."""
-        text = f"{sender} {subject} {body}"
+        text = f"{(sender or '')} {(subject or '')} {(body or '')}"
         return self._category_from_text(text)
 
     def _build_description(
