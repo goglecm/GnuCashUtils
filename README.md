@@ -17,8 +17,8 @@ Local-first Python tooling to enrich unresolved GnuCash transactions using email
 6. Applies only explicitly approved changes, with backup + audit + rollback journal. New categories are created in the GnuCash file.
 
 The full specification is in:
-- `gnucash_email_receipt_categorization_spec.mdc`
-- `architecture_implementation_plan.mdc`
+- `docs/gnucash_email_receipt_categorization_spec.mdc`
+- `docs/architecture_implementation_plan.mdc`
 
 ---
 
@@ -149,10 +149,11 @@ python -m gnc_enrich apply --state-dir /finance/gnc-state --create-backup --back
 .
 ├── README.md
 ├── pyproject.toml
-├── gnucash_email_receipt_categorization_spec.mdc
-├── architecture_implementation_plan.mdc
-├── developers_guide.mdc
-├── test_plan_and_strategy.mdc
+├── docs/
+│   ├── gnucash_email_receipt_categorization_spec.mdc
+│   ├── architecture_implementation_plan.mdc
+│   ├── developers_guide.mdc
+│   └── test_plan_and_strategy.mdc
 ├── src/gnc_enrich/
 │   ├── __main__.py
 │   ├── cli.py                       # CLI entry points (run/review/apply)
@@ -206,7 +207,7 @@ pytest -k matching  # keyword filter
 pytest tests/test_integration.py -v  # integration only
 ```
 
-See `developers_guide.mdc` for full testing documentation.
+See `docs/developers_guide.mdc` for full testing documentation.
 
 ---
 

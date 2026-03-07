@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Architecture
 
-The authoritative architecture and module status document lives in `architecture_implementation_plan.mdc` at the repository root.
+The authoritative architecture and module status document lives in `docs/architecture_implementation_plan.mdc`.
 Always consult that file for the package layout, dependency list, module status, and test coverage matrix.
 
 Quick data flow reminder (see architecture doc for full details):

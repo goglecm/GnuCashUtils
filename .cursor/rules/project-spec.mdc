@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Project Specification
 
-The authoritative specification lives in `gnucash_email_receipt_categorization_spec.mdc` at the repository root.
+The authoritative specification lives in `docs/gnucash_email_receipt_categorization_spec.mdc`.
 Always consult that file for domain rules, acceptance criteria, and input/output contracts.
 
 Key quick-reference points (see spec file for full details):

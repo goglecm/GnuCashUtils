@@ -5,8 +5,8 @@ alwaysApply: true
 
 # Testing
 
-The authoritative test plan lives in `test_plan_and_strategy.mdc` at the repository root.
-The developer testing workflow is documented in `developers_guide.mdc`.
+The authoritative test plan lives in `docs/test_plan_and_strategy.mdc`.
+The developer testing workflow is documented in `docs/developers_guide.mdc`.
 Always consult those files for test levels, fixture strategy, and the full test matrix.
 
 Key conventions (see test plan for full details):
