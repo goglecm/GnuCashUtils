@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 280 tests passing.
+> Status: **v1 Implemented** — all modules complete, 286 tests passing.
 
 ## What this project does
 
@@ -13,7 +13,7 @@ Local-first Python tooling to enrich unresolved GnuCash transactions using email
    - Receipt images (`jpg`, `jpeg`, `png`, `heic`, `heif`) via Tesseract OCR
    - Historical categorized transactions
 4. Generates suggested descriptions/categories/splits with ML confidence scores. Can propose new categories.
-5. Presents proposals **one transaction at a time** in a local Flask web app, with evidence approval checkboxes. Approved evidence enriches descriptions.
+5. Presents proposals **one transaction at a time** in a local Flask web app: queue split into "To categorise (expenses)" and "Transfers (own accounts)", with Previous/Next navigation, clean email body display, confidence breakdown, and an "Approved transactions" list. Approved evidence enriches descriptions.
 6. Applies only explicitly approved changes, with backup + audit + rollback journal. New categories are created in the GnuCash file.
 
 The full specification is in:
@@ -173,7 +173,7 @@ python -m gnc_enrich apply --state-dir /finance/gnc-state --create-backup --back
 │   ├── apply/engine.py              # Apply, backup, rollback, audit
 │   ├── state/repository.py          # JSON/JSONL state persistence
 │   └── services/pipeline.py         # Pipeline orchestration
-└── tests/                           # 280 tests
+└── tests/                           # 284 tests
     ├── conftest.py                  # Shared fixtures
     └── fixtures/emails/             # 13 synthetic .eml files in subdirectories
 ```
@@ -201,7 +201,7 @@ The `--state-dir` directory contains:
 ## Running tests
 
 ```bash
-pytest              # all 280 tests
+pytest              # all 286 tests
 pytest -v           # verbose
 pytest -k matching  # keyword filter
 pytest tests/test_integration.py -v  # integration only

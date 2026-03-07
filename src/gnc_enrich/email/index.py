@@ -27,6 +27,8 @@ def _serialize_evidence(ev: EmailEvidence) -> dict[str, Any]:
         "sent_at": ev.sent_at.isoformat(),
         "body_snippet": ev.body_snippet,
         "full_body": ev.full_body,
+        "filtered_body": getattr(ev, "filtered_body", ""),
+        "amount_context": getattr(ev, "amount_context", ""),
         "parsed_amounts": [str(a) for a in ev.parsed_amounts],
         "relevance_score": ev.relevance_score,
     }
@@ -42,6 +44,8 @@ def _deserialize_evidence(d: dict) -> EmailEvidence:
         sent_at=datetime.fromisoformat(d["sent_at"]),
         body_snippet=d.get("body_snippet", ""),
         full_body=d.get("full_body", ""),
+        filtered_body=d.get("filtered_body", ""),
+        amount_context=d.get("amount_context", ""),
         parsed_amounts=[Decimal(a) for a in d.get("parsed_amounts", [])],
         relevance_score=float(d.get("relevance_score", 0.0)),
     )
@@ -55,8 +59,19 @@ class EmailIndexRepository:
         self._indexed_files: set[str] = set()
         self._parser = EmlParser()
 
-    def build_or_load(self, emails_dir: Path, state_dir: Path) -> None:
-        """Load existing index from state_dir and index any new .eml files."""
+    def build_or_load(
+        self,
+        emails_dir: Path,
+        state_dir: Path,
+        *,
+        min_date: date | None = None,
+    ) -> None:
+        """Load existing index from state_dir and index any new .eml files.
+
+        When *min_date* is set, only emails with sent_at >= min_date are kept.
+        This reduces processing time by ignoring emails older than the date
+        range needed for the current candidate transactions.
+        """
         index_path = state_dir / "email_index.jsonl"
         manifest_path = state_dir / "email_index_manifest.json"
         state_dir.mkdir(parents=True, exist_ok=True)
@@ -79,7 +94,11 @@ class EmailIndexRepository:
                     continue
                 if "_schema_version" in d:
                     continue
-                self._entries.append(_deserialize_evidence(d))
+                ev = _deserialize_evidence(d)
+                ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
+                if min_date is not None and ev_date < min_date:
+                    continue
+                self._entries.append(ev)
 
         if not index_path.exists() or index_path.stat().st_size == 0:
             index_path.write_text(
@@ -96,6 +115,10 @@ class EmailIndexRepository:
                     continue
                 try:
                     ev = self._parser.parse(eml_path)
+                    ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
+                    if min_date is not None and ev_date < min_date:
+                        self._indexed_files.add(fname)
+                        continue
                     self._entries.append(ev)
                     idx_f.write(json.dumps(_serialize_evidence(ev)) + "\n")
                     self._indexed_files.add(fname)

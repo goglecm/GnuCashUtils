@@ -53,6 +53,7 @@ class Transaction:
     splits: list[Split] = field(default_factory=list)
     account_name: str = ""
     original_category: str = ""
+    is_transfer: bool = False
 
 
 @dataclass(slots=True)
@@ -73,6 +74,8 @@ class EmailEvidence:
     sent_at: datetime
     body_snippet: str = ""
     full_body: str = ""
+    filtered_body: str = ""
+    amount_context: str = ""
     parsed_amounts: list[Decimal] = field(default_factory=list)
     relevance_score: float = 0.0
 
@@ -111,6 +114,8 @@ class Proposal:
     tx_amount: Decimal | None = None
     original_description: str = ""
     original_splits: list[Split] = field(default_factory=list)
+    confidence_breakdown: list[str] = field(default_factory=list)
+    is_transfer: bool = False
 
 
 @dataclass(slots=True)

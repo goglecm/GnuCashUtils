@@ -2,7 +2,7 @@
 
 ## Status: Implemented (v1)
 
-All modules have been implemented with full test coverage (280 tests).
+All modules have been implemented with full test coverage (286 tests).
 
 ## Package Layout
 
@@ -103,4 +103,4 @@ src/gnc_enrich/
 | `test_system.py` | 17 | Full system tests: multi-subdir emails, review cycle, apply+rollback, Flask webapp |
 | `test_cli_flags.py` | 36 | Every CLI flag: verbose, run/review/apply flags, dispatch tests |
 | `test_system_scenarios.py` | 11 | Scenarios: imbalance-only, zero candidates, date window, multiple receipts, nested emails, empty book, realistic format |
-| **Total** | **280** | |
+| **Total** | **286** | |

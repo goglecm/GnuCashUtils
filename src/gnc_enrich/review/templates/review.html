@@ -2,6 +2,25 @@
 {% block title %}Review: {{ proposal.tx_id }}{% endblock %}
 {% block content %}
 
+{# ── Navigation: previous / next in queue ── #}
+<nav class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+    <div>
+        {% if prev_proposal_id %}
+        <a href="{{ url_for('review', proposal_id=prev_proposal_id) }}" class="btn" style="background:var(--border);color:var(--text);">&larr; Previous</a>
+        {% else %}
+        <span style="color:var(--muted);">&larr; Previous</span>
+        {% endif %}
+    </div>
+    <div style="font-weight:600;">{{ pending }} pending / {{ total }} total</div>
+    <div>
+        {% if next_proposal_id %}
+        <a href="{{ url_for('review', proposal_id=next_proposal_id) }}" class="btn" style="background:var(--primary);color:white;">Next &rarr;</a>
+        {% else %}
+        <span style="color:var(--muted);">Next &rarr;</span>
+        {% endif %}
+    </div>
+</nav>
+
 {# ── Before / After comparison ── #}
 <div class="card">
     <h2>Transaction &mdash; Before &amp; After</h2>
@@ -60,6 +79,16 @@
                     </span>
                 </div>
             </div>
+            {% if proposal.confidence_breakdown %}
+            <div class="field">
+                <label>Contributing factors</label>
+                <ul style="font-size:0.85rem;margin:0.25rem 0 0 1rem;padding:0;">
+                    {% for factor in proposal.confidence_breakdown %}
+                    <li>{{ factor }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
             <div class="field"><label>Rationale</label><div class="value" style="font-size:0.85rem;">{{ proposal.rationale }}</div></div>
         </div>
     </div>
@@ -86,8 +115,17 @@
             {% if em.parsed_amounts %}
             <div style="font-size:0.85rem;margin-top:0.25rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
             {% endif %}
-            {% if em.body_snippet %}
-            <div style="font-size:0.85rem;color:var(--muted);margin-top:0.25rem;white-space:pre-wrap;">{{ em.body_snippet[:300] }}</div>
+            {% if email_category_hints and loop.index0 < email_category_hints|length %}
+            <div style="font-size:0.8rem;color:var(--primary);margin-top:0.2rem;">Suggested category from email: {{ email_category_hints[loop.index0] }}</div>
+            {% endif %}
+            {% set body_display = em.filtered_body or em.body_snippet %}
+            {% if em.amount_context %}
+            <div style="font-size:0.85rem;margin-top:0.5rem;"><strong>Context around amount:</strong></div>
+            <div style="font-size:0.85rem;white-space:pre-wrap;background:var(--bg);padding:0.5rem;border-radius:4px;margin-top:0.25rem;">{{ em.amount_context }}</div>
+            {% endif %}
+            {% if body_display %}
+            <div style="font-size:0.85rem;margin-top:0.5rem;"><strong>Email body (clean):</strong></div>
+            <div style="font-size:0.85rem;white-space:pre-wrap;background:var(--bg);padding:0.5rem;border-radius:4px;margin-top:0.25rem;max-height:12em;overflow-y:auto;">{{ body_display }}</div>
             {% endif %}
         </div>
     </div>

@@ -49,7 +49,7 @@ The system must:
 2. **Only GBP transactions** are eligible.
    - Mixed-currency transaction: **skip entirely**.
 3. **Future transactions are excluded**.
-4. **Transfers between user-owned accounts are excluded** from recategorization. A transaction is a transfer when **all** splits point to accounts of type `BANK`, `ASSET`, `LIABILITY`, `CASH`, `CREDIT`, or `EQUITY`.
+4. **Transfers between user-owned accounts** are identified and shown in a **separate queue** in the web view. A transaction is a transfer when **all** splits point to accounts of type `BANK`, `ASSET`, `LIABILITY`, `CASH`, `CREDIT`, or `EQUITY`. They remain in the proposal set but are displayed under "Transfers (own accounts)" rather than "To categorise (expenses)". The user may still approve or skip them (e.g. to confirm description). **Apply behaviour**: when the user approves a transfer, only the description is updated; split structure is never modified (transfers have no Unspecified/Imbalance splits to recategorise).
 5. **User approval required per transaction** before any write.
 6. **User can skip** any transaction.
 7. Skipped transactions are persisted and excluded in subsequent runs, with an option to reload/reconsider later.
@@ -120,8 +120,8 @@ User-configurable parameters must include at least:
    - Parse accounts (with cached path lookup), splits (fraction format), transactions, currencies.
    - Validate and apply approved mutations (re-point account GUIDs, update split values/quantities, create new split elements for split transactions, remove surplus target splits).
 2. **Candidate Selector**
-   - Select only unresolved target transactions.
-   - Enforce GBP-only, non-future, non-transfer constraints.
+   - Select unresolved target transactions (Unspecified/Imbalance-GBP) and, optionally, transfers between own accounts.
+   - Enforce GBP-only, non-future. Transfers are included with an `is_transfer` flag and shown in a separate queue in the web view.
 3. **Email Pipeline**
    - Parse `.eml` metadata and body (plain text preferred over HTML; HTML tags stripped and entities decoded).
    - Filter body: remove signature blocks (RFC 3676 `-- `, `---`, `___`, `Sent from`, `Get Outlook`) and quoted replies (`>` prefixed lines).
@@ -140,6 +140,10 @@ User-configurable parameters must include at least:
    - Evidence-driven description enrichment joins base, email detail, and receipt detail with ` | ` separator.
 7. **Review Web App**
    - One transaction at a time review via routes: `/` (auto-redirect to next pending or done page), `/queue` (full queue sorted by date), `/review/<id>` (individual review).
+   - **Navigation**: each review page has Previous/Next links to move through the queue in date order without returning to the queue list.
+   - **Queue sections**: the queue view shows (1) "To categorise (expenses)" — non-transfer candidates; (2) "Transfers (own accounts)" — transfer transactions; (3) "Approved transactions" — list of decisions with action approve/edit at the bottom.
+   - **Email evidence display**: cleaned body only (no HTML/metadata); optional "context around amount" snippet; keyword-based category hint per email; duplicate newlines/whitespace collapsed for readability.
+   - **Confidence**: contributing factors (e.g. ML classifier score, refund detection, keyword fallback, email/receipt evidence) are shown so the user understands how the confidence was calculated.
    - Evidence display, edit controls, approve/skip.
    - Already-decided proposals shown in read-only mode.
    - Invalid split amounts silently skipped; empty splits fall back to ML-suggested splits.
@@ -168,6 +172,7 @@ User-configurable parameters must include at least:
 
 ## 7.2 Email Indexing
 - Must support large volumes (~70k emails) efficiently.
+- **Processing-time optimisation**: only emails with `sent_at >= (latest candidate transaction date − date window)` are loaded/indexed. Older emails are skipped to reduce parsing and matching time.
 - Persist JSONL index for reuse across runs.
 - Provide incremental rebuild options if new emails appear.
 

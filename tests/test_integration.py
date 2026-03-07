@@ -47,13 +47,13 @@ def test_full_run_review_apply_cycle(tmp_path: Path) -> None:
         state_dir=dirs["state"],
     )
     result = EnrichmentPipeline().run(config)
-    assert result.proposal_count == 3
+    assert result.proposal_count == 4
 
     # --- STEP 2: Review via service ---
     state = StateRepository(dirs["state"])
     svc = ReviewQueueService(state)
-    assert svc.total_count == 3
-    assert svc.pending_count == 3
+    assert svc.total_count == 4
+    assert svc.pending_count == 4
 
     prop1 = svc.next_proposal()
     assert prop1 is not None
@@ -83,7 +83,7 @@ def test_full_run_review_apply_cycle(tmp_path: Path) -> None:
         reviewer_note="Low confidence",
     ))
 
-    assert svc.pending_count == 0
+    assert svc.pending_count == 1
 
     # --- STEP 3: Dry-run report ---
     engine = ApplyEngine()
@@ -168,7 +168,7 @@ def test_full_cycle_via_flask_client(tmp_path: Path) -> None:
     assert b"All Proposals Reviewed" in resp.data
 
     decisions = state.load_decisions()
-    assert len(decisions) == 3
+    assert len(decisions) == 4
     assert all(d.action == "approve" for d in decisions)
 
 
@@ -191,4 +191,4 @@ def test_cli_run_command_dispatches(tmp_path: Path) -> None:
 
     state = StateRepository(dirs["state"])
     proposals = state.load_proposals()
-    assert len(proposals) == 3
+    assert len(proposals) == 4

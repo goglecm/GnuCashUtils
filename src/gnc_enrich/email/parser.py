@@ -25,6 +25,30 @@ _GBP_AMOUNT_RE = re.compile(
 )
 
 _MAX_BODY_SNIPPET = 500
+_AMOUNT_CONTEXT_CHARS = 200
+
+
+def _normalise_whitespace(text: str) -> str:
+    """Collapse multiple newlines and strip each line for readable display."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines)
+
+
+def _extract_amount_context(filtered_body: str, amount: Decimal) -> str:
+    """Return a short snippet of body text around the first occurrence of the amount."""
+    needle = str(amount)
+    if needle not in filtered_body:
+        needle_alt = str(int(amount)) if amount == int(amount) else needle
+        if needle_alt not in filtered_body:
+            return filtered_body[:_AMOUNT_CONTEXT_CHARS] if filtered_body else ""
+    pos = filtered_body.find(needle)
+    if pos < 0:
+        pos = filtered_body.find(str(int(amount)))
+    if pos < 0:
+        return filtered_body[:_AMOUNT_CONTEXT_CHARS] if filtered_body else ""
+    start = max(0, pos - _AMOUNT_CONTEXT_CHARS // 2)
+    end = min(len(filtered_body), pos + len(needle) + _AMOUNT_CONTEXT_CHARS // 2)
+    return _normalise_whitespace(filtered_body[start:end])
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RUN_RE = re.compile(r"[ \t]{2,}")
@@ -102,10 +126,14 @@ class EmlParser:
 
         body_text = _get_body_text(msg)
         filtered_body = _filter_body(body_text)
-        body_snippet = filtered_body[:_MAX_BODY_SNIPPET]
-
-        amount_source = f"{subject} {filtered_body}"
-        parsed_amounts = _extract_amounts(amount_source)
+        display_body = _normalise_whitespace(filtered_body)
+        body_snippet = display_body[:_MAX_BODY_SNIPPET]
+        parsed_amounts = _extract_amounts(f"{subject} {filtered_body}")
+        amount_context = ""
+        if parsed_amounts:
+            amount_context = _extract_amount_context(filtered_body, parsed_amounts[0])
+        if not amount_context and display_body:
+            amount_context = display_body[:_AMOUNT_CONTEXT_CHARS * 2]
 
         evidence_id = hashlib.sha256(
             (message_id or str(eml_path)).encode()
@@ -119,6 +147,8 @@ class EmlParser:
             sent_at=sent_at,
             body_snippet=body_snippet,
             full_body=body_text,
+            filtered_body=display_body,
+            amount_context=amount_context,
             parsed_amounts=parsed_amounts,
             relevance_score=0.0,
         )

@@ -133,13 +133,18 @@ class ApplyEngine:
         changes: dict[str, dict] = {}
         for tx_id, dec in approved_decisions.items():
             prop = proposal_map.get(tx_id)
-
-            changes[tx_id] = {
-                "description": dec.final_description,
-                "splits": [
+            is_transfer = prop and getattr(prop, "is_transfer", False)
+            splits_for_change = (
+                []
+                if is_transfer
+                else [
                     {"account_path": sp.account_path, "amount": str(sp.amount), "memo": sp.memo}
                     for sp in dec.final_splits
-                ],
+                ]
+            )
+            changes[tx_id] = {
+                "description": dec.final_description,
+                "splits": splits_for_change,
             }
 
             original_desc = ""

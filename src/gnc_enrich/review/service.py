@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from gnc_enrich.config import LlmConfig, LlmMode
 from gnc_enrich.domain.models import EmailEvidence, Proposal, ReceiptEvidence, ReviewDecision, SkipRecord
@@ -11,6 +11,11 @@ from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
 from gnc_enrich.state.repository import StateRepository
 
 logger = logging.getLogger(__name__)
+
+
+def _queue_order(proposals: list[Proposal]) -> list[Proposal]:
+    """Return proposals sorted by tx_date for consistent queue/navigation order."""
+    return sorted(proposals, key=lambda p: (p.tx_date or date.min, p.proposal_id))
 
 
 class ReviewQueueService:
@@ -69,14 +74,48 @@ class ReviewQueueService:
                 return p
         return None
 
+    def all_proposals(self) -> list[Proposal]:
+        return list(self._proposals)
+
     def get_proposal_by_tx(self, tx_id: str) -> Proposal | None:
         for p in self._proposals:
             if p.tx_id == tx_id:
                 return p
         return None
 
-    def all_proposals(self) -> list[Proposal]:
-        return list(self._proposals)
+    def queue_ordered_proposals(self) -> list[Proposal]:
+        """Proposals in queue order (by date) for navigation and display."""
+        return _queue_order(self._proposals)
+
+    def get_next_proposal_id(self, current_proposal_id: str) -> str | None:
+        """Return the next proposal ID in queue order, or None if at end."""
+        ordered = self.queue_ordered_proposals()
+        for i, p in enumerate(ordered):
+            if p.proposal_id == current_proposal_id:
+                if i + 1 < len(ordered):
+                    return ordered[i + 1].proposal_id
+                return None
+        return None
+
+    def get_prev_proposal_id(self, current_proposal_id: str) -> str | None:
+        """Return the previous proposal ID in queue order, or None if at start."""
+        ordered = self.queue_ordered_proposals()
+        for i, p in enumerate(ordered):
+            if p.proposal_id == current_proposal_id:
+                if i > 0:
+                    return ordered[i - 1].proposal_id
+                return None
+        return None
+
+    def approved_decisions(self) -> list[ReviewDecision]:
+        """Decisions that resulted in approve or edit (for display in queue)."""
+        decisions = self._state.load_decisions()
+        return [d for d in decisions if d.action in ("approve", "edit")]
+
+    def get_email_category_hint(self, sender: str, subject: str, body: str) -> str:
+        """Suggest a category from email content (keyword heuristic) for UI hint."""
+        predictor = CategoryPredictor(llm_config=self._llm_config)
+        return predictor.suggest_category_from_email(sender, subject, body)
 
     def submit_decision(self, decision: ReviewDecision) -> None:
         """Persist a review decision and update internal state."""

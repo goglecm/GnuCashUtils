@@ -62,6 +62,8 @@ class EmailMatcher:
                 sent_at=ev.sent_at,
                 body_snippet=ev.body_snippet,
                 full_body=ev.full_body,
+                filtered_body=getattr(ev, "filtered_body", "") or ev.body_snippet,
+                amount_context=getattr(ev, "amount_context", ""),
                 parsed_amounts=ev.parsed_amounts,
                 relevance_score=round(score, 4),
             )

@@ -174,6 +174,14 @@ class TestEmailIndexRepository:
         for r in results:
             assert date(2025, 1, 14) <= r.sent_at.date() <= date(2025, 1, 16)
 
+    def test_build_with_min_date_excludes_older_emails(self, tmp_path: Path) -> None:
+        repo = EmailIndexRepository()
+        min_date = date(2025, 1, 20)
+        repo.build_or_load(FIXTURES_DIR, tmp_path, min_date=min_date)
+        for ev in repo.entries:
+            ev_date = ev.sent_at.date() if hasattr(ev.sent_at, "date") else ev.sent_at
+            assert ev_date >= min_date
+
     def test_search_by_text_tokens(self, tmp_path: Path) -> None:
         repo = EmailIndexRepository()
         repo.build_or_load(FIXTURES_DIR, tmp_path)

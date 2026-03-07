@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import gzip
 import logging
 import shutil
@@ -126,8 +127,14 @@ class GnuCashLoader:
         *,
         include_skipped: bool = False,
         skipped_ids: set[str] | None = None,
+        include_transfers: bool = True,
     ) -> list[Transaction]:
-        """Filter to only actionable target transactions per domain rules."""
+        """Filter to actionable target transactions (expenses and optionally transfers).
+
+        Returns both expense candidates (Unspecified/Imbalance-GBP, not transfer)
+        and, when *include_transfers* is True, transfer transactions (all splits
+        to own asset/bank accounts), each with is_transfer set accordingly.
+        """
         today = date.today()
         skipped = skipped_ids or set()
         candidates = []
@@ -139,11 +146,14 @@ class GnuCashLoader:
                 continue
             if tx.currency != "GBP":
                 continue
-            if self._is_transfer(tx):
+            is_transfer = self._is_transfer(tx)
+            if is_transfer:
+                if include_transfers:
+                    candidates.append(dataclasses.replace(tx, is_transfer=True))
                 continue
             if not self._has_target_account(tx):
                 continue
-            candidates.append(tx)
+            candidates.append(dataclasses.replace(tx, is_transfer=False))
 
         return candidates
 

@@ -260,6 +260,25 @@ class TestReviewWebApp:
         resp = client.get("/queue")
         assert resp.status_code == 200
 
+    def test_review_page_has_next_prev_links(self, client) -> None:
+        resp = client.get("/")
+        assert resp.status_code in (200, 302)
+        if resp.status_code == 302:
+            location = resp.headers["Location"]
+            assert "/review/" in location
+            proposal_id = location.split("/review/")[-1].strip("/")
+            resp2 = client.get(f"/review/{proposal_id}")
+            html = resp2.data.decode()
+            assert "Previous" in html or "Next" in html
+
+    def test_queue_shows_expense_transfer_approved_sections(self, client) -> None:
+        resp = client.get("/queue")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "To categorise" in html or "expenses" in html.lower()
+        assert "Transfers" in html
+        assert "Approved" in html
+
     def test_nonexistent_proposal_redirects(self, client) -> None:
         resp = client.get("/review/nonexistent", follow_redirects=False)
         assert resp.status_code == 302

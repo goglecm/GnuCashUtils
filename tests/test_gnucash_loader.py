@@ -95,18 +95,29 @@ class TestCandidateFiltering:
         ids = {c.tx_id for c in candidates}
         assert "tx_future" not in ids
 
-    def test_excludes_transfers(self, sample_gnucash_path: Path) -> None:
+    def test_excludes_transfers_when_requested(self, sample_gnucash_path: Path) -> None:
         loader = GnuCashLoader()
         txs = loader.load_transactions(sample_gnucash_path)
-        candidates = loader.filter_candidates(txs)
+        candidates = loader.filter_candidates(txs, include_transfers=False)
         ids = {c.tx_id for c in candidates}
         assert "tx_transfer" not in ids
+
+    def test_includes_transfers_in_separate_queue_by_default(self, sample_gnucash_path: Path) -> None:
+        loader = GnuCashLoader()
+        txs = loader.load_transactions(sample_gnucash_path)
+        candidates = loader.filter_candidates(txs, include_transfers=True)
+        ids = {c.tx_id for c in candidates}
+        assert "tx_transfer" in ids
+        transfer = next(c for c in candidates if c.tx_id == "tx_transfer")
+        assert transfer.is_transfer is True
+        expense = next(c for c in candidates if c.tx_id != "tx_transfer")
+        assert expense.is_transfer is False
 
     def test_candidate_count(self, sample_gnucash_path: Path) -> None:
         loader = GnuCashLoader()
         txs = loader.load_transactions(sample_gnucash_path)
-        candidates = loader.filter_candidates(txs)
-        assert len(candidates) == 3
+        candidates = loader.filter_candidates(txs, include_transfers=True)
+        assert len(candidates) == 4
 
     def test_skipped_ids_excluded(self, sample_gnucash_path: Path) -> None:
         loader = GnuCashLoader()
@@ -114,7 +125,7 @@ class TestCandidateFiltering:
         candidates = loader.filter_candidates(txs, skipped_ids={"tx_unspec1"})
         ids = {c.tx_id for c in candidates}
         assert "tx_unspec1" not in ids
-        assert len(candidates) == 2
+        assert len(candidates) == 3
 
     def test_include_skipped(self, sample_gnucash_path: Path) -> None:
         loader = GnuCashLoader()

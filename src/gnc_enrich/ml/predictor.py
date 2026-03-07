@@ -96,11 +96,15 @@ class CategoryPredictor:
         receipt: ReceiptEvidence | None,
     ) -> Proposal:
         """Generate a Proposal with category, description, and evidence for a transaction."""
+        if getattr(tx, "is_transfer", False):
+            return self._propose_transfer(tx, emails, receipt)
+
         text = self._featurize_text(tx, emails, receipt)
         suggested_category = ""
         confidence = 0.0
         rationale_parts: list[str] = []
 
+        breakdown: list[str] = []
         refund_category = self._check_refund_match(tx)
         if refund_category:
             suggested_category = refund_category
@@ -108,6 +112,7 @@ class CategoryPredictor:
             rationale_parts.append(
                 f"Refund detected (negative amount); matched to '{refund_category}'"
             )
+            breakdown.append("Refund detection: matched to original category (confidence 65%)")
         elif self._trained and self._vectorizer and self._classifier:
             X = self._vectorizer.transform([text])
             proba = self._classifier.predict_proba(X)[0]
@@ -117,17 +122,21 @@ class CategoryPredictor:
             rationale_parts.append(
                 f"ML classifier predicted '{suggested_category}' with {confidence:.0%} confidence"
             )
+            breakdown.append(f"ML classifier: {suggested_category} ({confidence:.0%})")
         else:
             suggested_category = self._fallback_category(tx, emails)
             confidence = 0.3
             rationale_parts.append("No trained model; using heuristic fallback")
+            breakdown.append("Keyword heuristic fallback (confidence 30%)")
 
         if emails:
             top = emails[0]
             rationale_parts.append(f"Top email match: {top.sender} - {top.subject}")
+            breakdown.append(f"Email evidence: {top.sender} — {top.subject[:50]}")
 
         if receipt and receipt.parsed_total is not None:
             rationale_parts.append(f"Receipt total: £{receipt.parsed_total}")
+            breakdown.append(f"Receipt total: £{receipt.parsed_total}")
 
         if (
             self._llm_config.mode != LlmMode.DISABLED
@@ -158,6 +167,38 @@ class CategoryPredictor:
             tx_amount=tx.amount,
             original_description=tx.description,
             original_splits=list(tx.splits),
+            confidence_breakdown=breakdown,
+        )
+
+    def _propose_transfer(
+        self,
+        tx: Transaction,
+        emails: list[EmailEvidence],
+        receipt: ReceiptEvidence | None,
+    ) -> Proposal:
+        """Proposal for a transfer: keep original splits; only description may be enriched.
+
+        Transfers between own accounts are not recategorised; the apply engine
+        will only update the description when the user approves.
+        """
+        suggested_desc = self._build_description(tx, emails, receipt)
+        return Proposal(
+            proposal_id=uuid.uuid4().hex[:12],
+            tx_id=tx.tx_id,
+            suggested_description=suggested_desc,
+            suggested_splits=list(tx.splits),
+            confidence=1.0,
+            rationale="Transfer between own accounts; no recategorisation needed.",
+            evidence=EvidencePacket(
+                tx_id=tx.tx_id,
+                emails=emails,
+                receipt=receipt,
+            ),
+            tx_date=tx.posted_date,
+            tx_amount=tx.amount,
+            original_description=tx.description,
+            original_splits=list(tx.splits),
+            confidence_breakdown=["Transfer: no split change (keep original)"],
         )
 
     def _check_refund_match(self, tx: Transaction) -> str | None:
@@ -192,7 +233,11 @@ class CategoryPredictor:
         text = tx.description.lower()
         if emails:
             text += " " + " ".join(e.sender.lower() + " " + e.subject.lower() for e in emails[:3])
+        return self._category_from_text(text)
 
+    def _category_from_text(self, text: str) -> str:
+        """Suggest a category from free text using keyword heuristics."""
+        text_lower = text.lower()
         keywords = {
             "Expenses:Food": ["grocery", "tesco", "sainsbury", "asda", "lidl", "aldi", "food", "restaurant", "cafe"],
             "Expenses:Transport": ["fuel", "petrol", "uber", "train", "bus", "parking", "transport"],
@@ -200,9 +245,14 @@ class CategoryPredictor:
             "Expenses:Utilities": ["electric", "gas", "water", "broadband", "internet", "phone", "mobile"],
         }
         for category, kws in keywords.items():
-            if any(kw in text for kw in kws):
+            if any(kw in text_lower for kw in kws):
                 return category
         return "Expenses:Miscellaneous"
+
+    def suggest_category_from_email(self, sender: str, subject: str, body: str) -> str:
+        """Suggest a category from email sender, subject, and body (e.g. for UI hint)."""
+        text = f"{sender} {subject} {body}"
+        return self._category_from_text(text)
 
     def _build_description(
         self,

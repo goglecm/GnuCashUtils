@@ -96,6 +96,8 @@ def _parse_email_evidence(d: dict) -> EmailEvidence:
         sent_at=datetime.fromisoformat(d["sent_at"]),
         body_snippet=d.get("body_snippet", ""),
         full_body=d.get("full_body", ""),
+        filtered_body=d.get("filtered_body", ""),
+        amount_context=d.get("amount_context", ""),
         parsed_amounts=[_parse_decimal(a) for a in d.get("parsed_amounts", [])],
         relevance_score=float(d.get("relevance_score", 0.0)),
     )
@@ -124,6 +126,7 @@ def _parse_transaction(d: dict) -> Transaction:
         splits=[_parse_split(s) for s in d.get("splits", [])],
         account_name=d.get("account_name", ""),
         original_category=d.get("original_category", ""),
+        is_transfer=d.get("is_transfer", False),
     )
 
 
@@ -152,6 +155,8 @@ def _parse_proposal(d: dict) -> Proposal:
         tx_amount=_parse_decimal(d["tx_amount"]) if d.get("tx_amount") is not None else None,
         original_description=d.get("original_description", ""),
         original_splits=[_parse_split(s) for s in d.get("original_splits", [])],
+        confidence_breakdown=d.get("confidence_breakdown", []),
+        is_transfer=d.get("is_transfer", False),
     )
 
 

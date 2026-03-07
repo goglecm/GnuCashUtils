@@ -50,7 +50,7 @@ def test_pipeline_generates_proposals(tmp_path: Path) -> None:
     pipeline = EnrichmentPipeline()
     result = pipeline.run(config)
 
-    assert result.proposal_count == 3
+    assert result.proposal_count == 4
     assert result.skipped_count == 0
 
 
@@ -62,7 +62,7 @@ def test_proposals_persisted_to_state(tmp_path: Path) -> None:
 
     state = StateRepository(dirs["state"])
     proposals = state.load_proposals()
-    assert len(proposals) == 3
+    assert len(proposals) == 4
     assert all(p.suggested_splits for p in proposals)
     assert all(p.rationale for p in proposals)
 
@@ -78,7 +78,7 @@ def test_pipeline_respects_skipped(tmp_path: Path) -> None:
     pipeline = EnrichmentPipeline()
     result = pipeline.run(config)
 
-    assert result.proposal_count == 2
+    assert result.proposal_count == 3
     assert result.skipped_count == 1
 
 
@@ -101,7 +101,7 @@ def test_pipeline_include_skipped(tmp_path: Path) -> None:
     pipeline = EnrichmentPipeline()
     result = pipeline.run(config)
 
-    assert result.proposal_count == 3
+    assert result.proposal_count == 4
 
 
 def test_run_config_metadata_saved(tmp_path: Path) -> None:

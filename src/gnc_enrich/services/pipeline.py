@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 
 from gnc_enrich.config import RunConfig
 from gnc_enrich.domain.models import Proposal, ReceiptEvidence
@@ -63,12 +65,28 @@ class EnrichmentPipeline:
             all_txs,
             include_skipped=config.include_skipped,
             skipped_ids=skipped_ids,
+            include_transfers=True,
         )
         logger.info("Filtered to %d candidate transactions", len(candidates))
 
+        min_email_date = None
+        if candidates and config.emails_dir.exists():
+            latest_tx_date = max(tx.posted_date for tx in candidates)
+            min_email_date = latest_tx_date - timedelta(days=config.date_window_days)
+            logger.info(
+                "Only indexing emails from %s onwards (last tx date %s, window %d days before)",
+                min_email_date,
+                latest_tx_date,
+                config.date_window_days,
+            )
+
         email_index = EmailIndexRepository()
         if config.emails_dir.exists():
-            email_index.build_or_load(config.emails_dir, config.state_dir)
+            email_index.build_or_load(
+                config.emails_dir,
+                config.state_dir,
+                min_date=min_email_date,
+            )
         else:
             logger.info("Emails directory does not exist: %s — skipping email indexing", config.emails_dir)
 
@@ -117,10 +135,12 @@ class EnrichmentPipeline:
                 matched_receipt.evidence_id if matched_receipt else "none",
             )
             proposal = predictor.propose(tx, matched_emails, matched_receipt)
+            proposal = dataclasses.replace(proposal, is_transfer=tx.is_transfer)
             logger.debug(
-                "  Proposal: category=%s confidence=%.2f",
+                "  Proposal: category=%s confidence=%.2f transfer=%s",
                 proposal.suggested_splits[0].account_path if proposal.suggested_splits else "?",
                 proposal.confidence,
+                proposal.is_transfer,
             )
             proposals.append(proposal)
 

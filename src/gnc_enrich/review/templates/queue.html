@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Review Queue{% endblock %}
 {% block content %}
+
 <div class="card">
-    <h2>All Proposals (sorted by date)</h2>
-    {% for p in proposals %}
+    <h2>To categorise (expenses)</h2>
+    {% for p in expense_proposals %}
     <div class="queue-item" style="flex-direction:column;align-items:stretch;gap:0.25rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div>
@@ -30,5 +31,54 @@
         {% endif %}
     </div>
     {% endfor %}
+    {% if not expense_proposals %}
+    <p style="color:var(--muted);">No expense proposals.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Transfers (own accounts)</h2>
+    {% for p in transfer_proposals %}
+    <div class="queue-item" style="flex-direction:column;align-items:stretch;gap:0.25rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <a href="{{ url_for('review', proposal_id=p.proposal_id) }}">
+                    {% if p.tx_date %}{{ p.tx_date.strftime('%d/%m/%Y') }}{% endif %}
+                    &mdash;
+                    {% if p.tx_amount is not none %}&pound;{{ p.tx_amount }}{% endif %}
+                </a>
+                <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ p.original_description[:60] }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+                {% if p.tx_id in decided_ids %}
+                <span class="status-decided">Decided</span>
+                {% else %}
+                <span class="status-pending">Pending</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% if not transfer_proposals %}
+    <p style="color:var(--muted);">No transfer proposals.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Approved transactions</h2>
+    {% for dec in approved_decisions %}
+    <div class="queue-item" style="flex-direction:column;gap:0.25rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:600;">{{ dec.final_description[:60] }}</span>
+            <span class="status-decided">Approved</span>
+        </div>
+        <div style="font-size:0.85rem;color:var(--muted);">
+            {% for s in dec.final_splits %}{{ s.account_path }} &pound;{{ s.amount }}{% if not loop.last %}; {% endif %}{% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+    {% if not approved_decisions %}
+    <p style="color:var(--muted);">No approved transactions yet.</p>
+    {% endif %}
 </div>
 {% endblock %}

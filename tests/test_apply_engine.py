@@ -57,6 +57,22 @@ def _setup_state(tmp_path: Path) -> tuple[Path, Path]:
             original_description="POS Transaction",
             original_splits=[Split(account_path="Imbalance-GBP", amount=Decimal("32.00"))],
         ),
+        Proposal(
+            proposal_id="p4", tx_id="tx_transfer",
+            suggested_description="Transfer to Savings 25/01/2025",
+            suggested_splits=[
+                Split(account_path="Current Account", amount=Decimal("-500.00")),
+                Split(account_path="Savings Account", amount=Decimal("500.00")),
+            ],
+            confidence=1.0, rationale="Transfer between own accounts",
+            tx_date=date(2025, 1, 25), tx_amount=Decimal("500.00"),
+            original_description="Transfer to Savings",
+            original_splits=[
+                Split(account_path="Current Account", amount=Decimal("-500.00")),
+                Split(account_path="Savings Account", amount=Decimal("500.00")),
+            ],
+            is_transfer=True,
+        ),
     ]
     state.save_proposals(proposals)
 
@@ -75,6 +91,14 @@ def _setup_state(tmp_path: Path) -> tuple[Path, Path]:
         tx_id="tx_imbalance1", action="skip",
         final_description="",
         final_splits=[],
+    ))
+    state.save_decision(ReviewDecision(
+        tx_id="tx_transfer", action="approve",
+        final_description="Transfer to Savings 25/01/2025",
+        final_splits=[
+            Split(account_path="Expenses:Miscellaneous", amount=Decimal("500.00")),
+        ],
+        decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
     ))
 
     return gnucash, state_dir
@@ -140,10 +164,11 @@ class TestApply:
         assert journal_path.exists()
         entries = [json.loads(l) for l in journal_path.read_text().splitlines() if l.strip()]
         data_entries = [e for e in entries if "_schema_version" not in e]
-        assert len(data_entries) == 2  # only approved + edited
+        assert len(data_entries) == 3  # approved + edited + transfer
         tx_ids = {e["tx_id"] for e in data_entries}
         assert "tx_unspec1" in tx_ids
         assert "tx_unspec2" in tx_ids
+        assert "tx_transfer" in tx_ids
         assert "tx_imbalance1" not in tx_ids  # skipped
 
     def test_apply_writes_audit_log(self, tmp_path: Path) -> None:
@@ -153,8 +178,24 @@ class TestApply:
 
         state = StateRepository(state_dir)
         audit = state.load_audit_log()
-        assert len(audit) == 2
+        assert len(audit) == 3
         assert audit[0].action in ("approve", "edit")
+
+    def test_apply_transfer_only_updates_description(self, tmp_path: Path) -> None:
+        """Transfers: apply updates description only; splits are never modified."""
+        gnucash, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        loader = GnuCashLoader()
+        txs = loader.load_transactions(gnucash)
+        tx_map = {t.tx_id: t for t in txs}
+        transfer = tx_map["tx_transfer"]
+        assert transfer.description == "Transfer to Savings 25/01/2025"
+        split_paths = {sp.account_path for sp in transfer.splits}
+        assert "Current Account" in split_paths
+        assert "Savings Account" in split_paths
+        assert "Expenses:Miscellaneous" not in split_paths
 
     def test_journal_stores_original_description(self, tmp_path: Path) -> None:
         _, state_dir = _setup_state(tmp_path)

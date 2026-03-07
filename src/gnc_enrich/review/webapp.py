@@ -38,12 +38,26 @@ def create_app(service: ReviewQueueService) -> Flask:
             return redirect(url_for("index"))
 
         decided = service.is_decided(proposal.tx_id)
+        next_id = service.get_next_proposal_id(proposal_id)
+        prev_id = service.get_prev_proposal_id(proposal_id)
+        email_category_hints = []
+        if proposal.evidence and proposal.evidence.emails:
+            email_category_hints = [
+                service.get_email_category_hint(
+                    em.sender, em.subject,
+                    getattr(em, "filtered_body", None) or em.body_snippet,
+                )
+                for em in proposal.evidence.emails
+            ]
         return render_template(
             "review.html",
             proposal=proposal,
             decided=decided,
             pending=service.pending_count,
             total=service.total_count,
+            next_proposal_id=next_id,
+            prev_proposal_id=prev_id,
+            email_category_hints=email_category_hints,
         )
 
     @app.route("/review/<proposal_id>/decide", methods=["POST"])
@@ -88,12 +102,18 @@ def create_app(service: ReviewQueueService) -> Flask:
 
     @app.route("/queue")
     def queue():
-        proposals = service.all_proposals()
-        proposals.sort(key=lambda p: p.tx_date or date.min)
+        ordered = service.queue_ordered_proposals()
+        expense = [p for p in ordered if not getattr(p, "is_transfer", False)]
+        transfers = [p for p in ordered if getattr(p, "is_transfer", False)]
+        decided_ids = {p.tx_id for p in ordered if service.is_decided(p.tx_id)}
+        approved = service.approved_decisions()
         return render_template(
             "queue.html",
-            proposals=proposals,
-            decided_ids={p.tx_id for p in proposals if service.is_decided(p.tx_id)},
+            proposals=ordered,
+            expense_proposals=expense,
+            transfer_proposals=transfers,
+            decided_ids=decided_ids,
+            approved_decisions=approved,
             pending=service.pending_count,
             total=service.total_count,
         )
