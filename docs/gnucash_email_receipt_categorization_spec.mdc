@@ -172,7 +172,7 @@ User-configurable parameters must include at least:
 
 ## 7.2 Email Indexing
 - Must support large volumes (~70k emails) efficiently.
-- **Processing-time optimisation**: only emails with `sent_at >= (latest candidate transaction date − date window)` are loaded/indexed. Older emails are skipped to reduce parsing and matching time.
+- **Processing-time optimisation**: only emails with `sent_at >= (earliest candidate transaction date − date window)` are loaded into the index for the run, so that all candidates (including older Unspecified/Imbalance-GBP transactions) can receive email matches. Older emails are still written to the index file for future runs.
 - Persist JSONL index for reuse across runs.
 - Provide incremental rebuild options if new emails appear.
 

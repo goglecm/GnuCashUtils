@@ -1,7 +1,9 @@
 """Tests for the enrichment pipeline orchestration."""
 
 import gzip
+from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from gnc_enrich.config import RunConfig
 from gnc_enrich.services.pipeline import EnrichmentPipeline
@@ -124,3 +126,24 @@ def test_proposals_have_evidence(tmp_path: Path) -> None:
     for p in proposals:
         assert p.evidence is not None
         assert p.confidence > 0
+
+
+def test_email_index_min_date_uses_earliest_candidate(tmp_path: Path) -> None:
+    """Pipeline must index emails from (earliest candidate date - window) so old candidates get matches."""
+    dirs = _setup_pipeline_dirs(tmp_path)
+    config = _make_config(dirs)
+    # Sample book candidates: 2025-01-15, 2025-01-20, 2025-02-01, 2025-01-25 (transfer). Earliest = 2025-01-15.
+    # With date_window_days=7, min_email_date should be 2025-01-08.
+    expected_min = date(2025, 1, 15) - timedelta(days=7)
+    assert expected_min == date(2025, 1, 8)
+
+    with patch(
+        "gnc_enrich.services.pipeline.EmailIndexRepository"
+    ) as mock_repo_class:
+        mock_repo = mock_repo_class.return_value
+        pipeline = EnrichmentPipeline()
+        pipeline.build_proposals(config)
+
+        mock_repo.build_or_load.assert_called_once()
+        call_kw = mock_repo.build_or_load.call_args[1]
+        assert call_kw["min_date"] == expected_min

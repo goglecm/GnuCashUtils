@@ -71,11 +71,13 @@ class EnrichmentPipeline:
 
         min_email_date = None
         if candidates and config.emails_dir.exists():
+            earliest_tx_date = min(tx.posted_date for tx in candidates)
             latest_tx_date = max(tx.posted_date for tx in candidates)
-            min_email_date = latest_tx_date - timedelta(days=config.date_window_days)
+            min_email_date = earliest_tx_date - timedelta(days=config.date_window_days)
             logger.info(
-                "Only indexing emails from %s onwards (last tx date %s, window %d days before)",
+                "Indexing emails from %s onwards (candidate tx range %s to %s, window %d days before earliest)",
                 min_email_date,
+                earliest_tx_date,
                 latest_tx_date,
                 config.date_window_days,
             )

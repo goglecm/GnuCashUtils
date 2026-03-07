@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 288 tests passing.
+> Status: **v1 Implemented** — all modules complete, 289 tests passing.
 
 ## What this project does
 
