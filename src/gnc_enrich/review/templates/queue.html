@@ -2,6 +2,10 @@
 {% block title %}Review Queue{% endblock %}
 {% block content %}
 
+<p style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;">
+    {{ expense_proposals|length }} to categorise (expenses: Unspecified/Imbalance-GBP), {{ transfer_proposals|length }} transfers — {{ total }} total proposals. {{ pending }} pending.
+</p>
+
 <div class="card">
     <h2>To categorise (expenses)</h2>
     {% for p in expense_proposals %}

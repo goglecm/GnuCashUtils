@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from gnc_enrich.domain.models import Split, Transaction
 from gnc_enrich.gnucash.loader import GnuCashLoader, GnuCashWriter
 
 
@@ -135,6 +136,32 @@ class TestCandidateFiltering:
         )
         ids = {c.tx_id for c in candidates}
         assert "tx_unspec1" in ids
+
+    def test_has_target_account_matches_any_path_segment(self) -> None:
+        """Unspecified/Imbalance-GBP under parent (e.g. Expenses:Unspecified) must count as candidate."""
+        loader = GnuCashLoader()
+        base = {
+            "tx_id": "t",
+            "posted_date": date(2020, 1, 1),
+            "description": "x",
+            "currency": "GBP",
+            "amount": Decimal("1"),
+        }
+        tx_unspec_under_expenses = Transaction(
+            **base,
+            splits=[Split(account_path="Expenses:Unspecified", amount=Decimal("1"), memo="")],
+        )
+        tx_imbalance_nested = Transaction(
+            **base,
+            splits=[Split(account_path="Assets:Current:Imbalance-GBP", amount=Decimal("1"), memo="")],
+        )
+        tx_food_not_target = Transaction(
+            **base,
+            splits=[Split(account_path="Expenses:Food", amount=Decimal("1"), memo="")],
+        )
+        assert loader._has_target_account(tx_unspec_under_expenses) is True
+        assert loader._has_target_account(tx_imbalance_nested) is True
+        assert loader._has_target_account(tx_food_not_target) is False
 
 
 class TestGnuCashWriter:

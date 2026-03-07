@@ -3,7 +3,7 @@
 {% block content %}
 <div class="card" style="text-align:center;padding:3rem;">
     <h2 style="border:none;">All Proposals Reviewed</h2>
-    <p style="margin-top:1rem;color:var(--muted);">{{ decided }} of {{ total }} transactions have been decided.</p>
+    <p style="margin-top:1rem;color:var(--muted);">{{ decided }} of {{ total }} proposals have been decided (expenses + transfers).</p>
     <p style="margin-top:1rem;">You can now run <code>gnc-enrich apply --state-dir &lt;path&gt;</code> to apply approved changes.</p>
     <p style="margin-top:1rem;"><a href="{{ url_for('queue') }}">View full queue</a></p>
 </div>

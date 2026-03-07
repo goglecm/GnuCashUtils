@@ -131,9 +131,10 @@ class GnuCashLoader:
     ) -> list[Transaction]:
         """Filter to actionable target transactions (expenses and optionally transfers).
 
-        Returns both expense candidates (Unspecified/Imbalance-GBP, not transfer)
-        and, when *include_transfers* is True, transfer transactions (all splits
-        to own asset/bank accounts), each with is_transfer set accordingly.
+        Expense candidates: any transaction with at least one split to an account
+        whose path contains \"Unspecified\" or \"Imbalance-GBP\" as a segment
+        (e.g. Expenses:Unspecified or Assets:Imbalance-GBP). Transfers (all splits
+        to asset/bank/liability) are included only when *include_transfers* is True.
         """
         today = date.today()
         skipped = skipped_ids or set()
@@ -264,9 +265,10 @@ class GnuCashLoader:
         return self._path_to_account.get(path)
 
     def _has_target_account(self, tx: Transaction) -> bool:
+        """True if any split targets Unspecified or Imbalance-GBP (any segment of path)."""
         for sp in tx.splits:
-            top_level = sp.account_path.split(":")[0]
-            if top_level in _TARGET_ACCOUNTS:
+            parts = sp.account_path.split(":")
+            if any(part in _TARGET_ACCOUNTS for part in parts):
                 return True
         return False
 

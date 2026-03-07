@@ -1,7 +1,7 @@
 # GnuCash Transaction Enrichment & User-Approved Categorization Specification (v1)
 
 ## 1. Purpose
-Build a Python-based, local-first system that processes a GnuCash file plus evidence sources (emails and receipts) to help the user resolve transactions currently under top-level categories **`Unspecified`** or **`Imbalance-GBP`**.
+Build a Python-based, local-first system that processes a GnuCash file plus evidence sources (emails and receipts) to help the user resolve transactions that have a split to **`Unspecified`** or **`Imbalance-GBP`** (at any level, e.g. `Expenses:Unspecified`).
 
 The system must:
 - Propose transaction category and description updates.
@@ -43,9 +43,9 @@ The system must:
 
 ## 3. Key Domain Rules
 
-1. **Target transactions** are those assigned to top-level categories:
-   - `Unspecified`
-   - `Imbalance-GBP`
+1. **Target transactions** are those with at least one split to an account whose path contains (as a segment):
+   - `Unspecified` (e.g. `Unspecified` or `Expenses:Unspecified`)
+   - `Imbalance-GBP` (e.g. `Imbalance-GBP` or `Assets:Imbalance-GBP`)
 2. **Only GBP transactions** are eligible.
    - Mixed-currency transaction: **skip entirely**.
 3. **Future transactions are excluded**.

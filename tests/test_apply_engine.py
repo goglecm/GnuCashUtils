@@ -9,7 +9,14 @@ from pathlib import Path
 import pytest
 
 from gnc_enrich.apply.engine import ApplyEngine
-from gnc_enrich.domain.models import Proposal, ReviewDecision, SkipRecord, Split
+from gnc_enrich.domain.models import (
+    EvidencePacket,
+    Proposal,
+    ReceiptEvidence,
+    ReviewDecision,
+    SkipRecord,
+    Split,
+)
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.state.repository import StateRepository
 from tests.conftest import SAMPLE_GNUCASH_XML
@@ -270,6 +277,55 @@ class TestApply:
         tx = next(t for t in txs if t.tx_id == "tx_unspec1")
         assert tx.description == "Updated without proposal"
         assert any(s.account_path == "Unspecified" for s in tx.splits)
+
+    def test_receipt_not_moved_when_total_mismatch(self, tmp_path: Path) -> None:
+        """Spec 7.3: receipt with materially different total is not moved to processed."""
+        gnucash = tmp_path / "book.gnucash"
+        with gzip.open(gnucash, "wb") as f:
+            f.write(SAMPLE_GNUCASH_XML.encode("utf-8"))
+        receipts_dir = tmp_path / "receipts"
+        receipts_dir.mkdir()
+        processed_dir = tmp_path / "processed"
+        receipt_file = receipts_dir / "receipt_mismatch.jpg"
+        receipt_file.write_bytes(b"dummy image")
+
+        state_dir = tmp_path / "state"
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {
+            "gnucash_path": str(gnucash),
+            "processed_receipts_dir": str(processed_dir),
+        })
+        # Proposal for tx_unspec1 (amount £25) but receipt parsed_total £99 — mismatch
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx_unspec1",
+            suggested_description="Tesco 15/01/2025",
+            suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            confidence=0.8, rationale="ML",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="Card Payment",
+            original_splits=[Split(account_path="Unspecified", amount=Decimal("25.00"))],
+            evidence=EvidencePacket(
+                tx_id="tx_unspec1",
+                receipt=ReceiptEvidence(
+                    evidence_id="r1",
+                    source_path=str(receipt_file),
+                    ocr_text="Total 99.00",
+                    parsed_total=Decimal("99.00"),
+                ),
+            ),
+        )
+        state.save_proposals([prop])
+        state.save_decision(ReviewDecision(
+            tx_id="tx_unspec1", action="approve",
+            final_description="Tesco 15/01/2025",
+            final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+        ))
+
+        ApplyEngine().apply(state_dir)
+
+        assert receipt_file.exists()
+        assert not any(processed_dir.glob("*")), "Receipt must not be moved when total mismatches"
 
     def test_apply_fails_without_metadata(self, tmp_path: Path) -> None:
         state_dir = tmp_path / "state"
