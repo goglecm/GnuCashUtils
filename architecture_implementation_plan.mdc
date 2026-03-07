@@ -2,7 +2,7 @@
 
 ## Status: Implemented (v1)
 
-All modules have been implemented with full test coverage (198 tests).
+All modules have been implemented with full test coverage (243 tests).
 
 ## Package Layout
 
@@ -101,4 +101,6 @@ src/gnc_enrich/
 | `test_cli.py` | 4 | Parser contracts, flag defaults, LLM args |
 | `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
 | `test_system.py` | 17 | Full system tests: multi-subdir emails, review cycle, apply+rollback, Flask webapp |
-| **Total** | **198** | |
+| `test_cli_flags.py` | 34 | Every CLI flag: verbose, run/review/apply flags, dispatch tests |
+| `test_system_scenarios.py` | 11 | Scenarios: imbalance-only, zero candidates, date window, multiple receipts, nested emails, empty book, realistic format |
+| **Total** | **243** | |

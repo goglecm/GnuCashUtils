@@ -1,34 +1,15 @@
 ---
-description: Architecture and module layout for the gnc_enrich package
+description: Points to the architecture document for module layout and data flow
 alwaysApply: true
 ---
 
 # Architecture
 
-## Package Layout
+The authoritative architecture and module status document lives in `architecture_implementation_plan.mdc` at the repository root.
+Always consult that file for the package layout, dependency list, module status, and test coverage matrix.
 
-```
-src/gnc_enrich/
-  cli.py            # CLI with run/review/apply subcommands, -v/--verbose flag
-  config.py         # RunConfig, ApplyConfig, ReviewConfig, LlmConfig dataclasses
-  domain/models.py  # Transaction, Split, Account, EmailEvidence, ReceiptEvidence, Proposal, ReviewDecision, etc.
-  gnucash/loader.py # GnuCashLoader (gzip XML parse, filter), GnuCashWriter (backup, write, new account creation)
-  email/parser.py   # EmlParser (stdlib email, SHA256 ID, GBP regex, full body)
-  email/index.py    # EmailIndexRepository (JSONL index, recursive rglob, incremental)
-  receipt/ocr.py    # ReceiptOcrEngine (Tesseract + optional LLM fallback)
-  receipt/repository.py  # ReceiptRepository (list unprocessed, move to processed)
-  matching/email_matcher.py   # Multi-signal scoring (amount, date, text)
-  matching/receipt_matcher.py # One-to-one matching, amount tolerance
-  ml/predictor.py   # CategoryPredictor (TF-IDF + SGDClassifier), FeedbackTrainer, evidence enrichment
-  review/service.py # ReviewQueueService (queue, decisions, evidence-driven enrichment on submit)
-  review/webapp.py  # Flask app with evidence approval checkboxes
-  apply/engine.py   # ApplyEngine (dry-run, apply with backup/audit/journal, rollback)
-  state/repository.py  # JSON/JSONL persistence with schema version headers
-  services/pipeline.py # EnrichmentPipeline orchestrating all components
-```
+Quick data flow reminder (see architecture doc for full details):
 
-## Data Flow
-
-`run` → load GnuCash → filter candidates → index emails → OCR receipts → match → predict → save proposals
-`review` → Flask web app → one-by-one approval with evidence checkboxes → persist decisions
-`apply` → load decisions → backup → write XML (descriptions + split accounts) → audit + journal
+- `run` → load GnuCash → filter candidates → index emails → OCR receipts → match → predict → save proposals
+- `review` → Flask web app → one-by-one approval with evidence checkboxes → persist decisions
+- `apply` → load decisions → backup → write XML (descriptions + split accounts) → audit + journal

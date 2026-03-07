@@ -1,35 +1,17 @@
 ---
-description: Project specification – domain rules, inputs/outputs, and acceptance criteria for the GnuCash enrichment system
+description: Points to the project specification for domain rules, inputs/outputs, and acceptance criteria
 alwaysApply: true
 ---
 
-# GnuCash Enrichment Specification
+# Project Specification
 
-This project enriches unresolved GnuCash transactions (Unspecified / Imbalance-GBP) using email and receipt evidence with ML-assisted suggestions and mandatory user approval.
+The authoritative specification lives in `gnucash_email_receipt_categorization_spec.mdc` at the repository root.
+Always consult that file for domain rules, acceptance criteria, and input/output contracts.
 
-## Domain Rules (always enforce)
+Key quick-reference points (see spec file for full details):
 
-1. Target transactions: top-level `Unspecified` or `Imbalance-GBP` only.
-2. Only **GBP** transactions. Mixed-currency: skip entirely.
-3. Future-dated transactions: excluded.
-4. Transfers between user-owned accounts: excluded.
-5. **User approval required** per transaction before any write.
-6. User can **skip** any transaction; skips persist across runs.
-7. Descriptions are **appended to**, never overwritten.
-8. Date formatting: **DD/MM/YYYY** (GB format).
-9. Refunds → same category as original when identifiable.
-10. Not all transactions have emails; not all emails have transactions.
-11. Receipts may often be absent entirely.
-12. New categories are allowed and written to the GnuCash file.
-13. Evidence approval drives description enrichment.
-
-## Inputs
-
-- `--gnucash-path`: gzip-compressed XML `.gnucash` file (`lxml`).
-- `--emails-dir`: directory of `.eml` files, **recursively scanned** (subdirs per category).
-- `--receipts-dir`: images (`jpg/jpeg/png/heic/heif`).
-- `--state-dir` (required): JSON/JSONL state persistence.
-
-## Key Tech Stack
-
-Python 3.11+ · lxml · pytesseract + Pillow + pillow-heif · scikit-learn · Flask + Jinja2 · requests (optional LLM)
+- Target accounts: `Unspecified`, `Imbalance-GBP` only
+- GBP only; skip mixed-currency and future-dated transactions
+- User approval is mandatory before any write
+- Not all transactions have emails; not all emails have transactions; receipts often absent
+- New categories allowed; evidence approval drives enrichment
