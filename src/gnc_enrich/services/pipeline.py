@@ -100,6 +100,8 @@ class EnrichmentPipeline:
         logger.info("Loaded %d transactions from %s", len(all_txs), config.gnucash_path)
 
         state = StateRepository(config.state_dir)
+        account_paths = sorted(set(loader._account_paths.values()))
+        state.save_metadata("account_paths", {"paths": account_paths})
         skipped_ids = state.load_skipped_ids()
 
         candidates = loader.filter_candidates(

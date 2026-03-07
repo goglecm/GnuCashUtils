@@ -52,6 +52,9 @@ def _extract_amount_context(filtered_body: str, amount: Decimal) -> str:
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RUN_RE = re.compile(r"[ \t]{2,}")
+_STYLE_BLOCK_RE = re.compile(r"<style[^>]*>.*?</style>", re.IGNORECASE | re.DOTALL)
+_CSS_COMMENT_RE = re.compile(r"/\*\*?[^*]*\*+/", re.DOTALL)
+_CSS_RULE_RE = re.compile(r"\.[\w-]+\s*\{[^}]*\}|[\w#.-]+\s*\{\s*[^}]*\}", re.IGNORECASE)
 
 _SIGNATURE_MARKERS_STRIPPED = {"___", "---", "Sent from", "Get Outlook"}
 
@@ -70,9 +73,12 @@ def _extract_amounts(text: str) -> list[Decimal]:
 
 
 def _strip_html(text: str) -> str:
-    """Remove HTML tags, decode HTML entities, and collapse whitespace."""
+    """Remove HTML tags (including <style> blocks), decode entities, strip CSS comments, collapse whitespace."""
+    text = _STYLE_BLOCK_RE.sub(" ", text)
     text = _HTML_TAG_RE.sub(" ", text)
     text = html_mod.unescape(text)
+    text = _CSS_COMMENT_RE.sub(" ", text)
+    text = _CSS_RULE_RE.sub(" ", text)
     text = _WHITESPACE_RUN_RE.sub(" ", text)
     return text.strip()
 

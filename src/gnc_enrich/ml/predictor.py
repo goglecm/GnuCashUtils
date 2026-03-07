@@ -146,6 +146,10 @@ class CategoryPredictor:
             if llm_suggestion:
                 rationale_parts.append(f"LLM suggestion: {llm_suggestion}")
 
+        if not suggested_category or suggested_category in ("Unspecified", "Imbalance-GBP"):
+            suggested_category = "Expenses:Miscellaneous"
+            if not breakdown or "fallback" not in breakdown[-1].lower():
+                breakdown.append("Default category (no Unspecified/Imbalance suggested)")
         suggested_desc = self._build_description(tx, emails, receipt)
         suggested_splits = [
             Split(account_path=suggested_category, amount=tx.amount),

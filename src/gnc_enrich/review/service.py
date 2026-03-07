@@ -74,6 +74,13 @@ class ReviewQueueService:
                 return p
         return None
 
+    def get_account_paths(self) -> list[str]:
+        """Return sorted list of GnuCash account paths for category dropdown (from last run)."""
+        meta = self._state.load_metadata("account_paths")
+        if not meta or "paths" not in meta:
+            return []
+        return list(meta.get("paths", []))
+
     def all_proposals(self) -> list[Proposal]:
         return list(self._proposals)
 

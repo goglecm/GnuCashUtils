@@ -49,6 +49,7 @@ def create_app(service: ReviewQueueService) -> Flask:
                 )
                 for em in proposal.evidence.emails
             ]
+        account_paths = service.get_account_paths()
         return render_template(
             "review.html",
             proposal=proposal,
@@ -58,6 +59,7 @@ def create_app(service: ReviewQueueService) -> Flask:
             next_proposal_id=next_id,
             prev_proposal_id=prev_id,
             email_category_hints=email_category_hints,
+            account_paths=account_paths,
         )
 
     @app.route("/review/<proposal_id>/decide", methods=["POST"])
@@ -75,14 +77,19 @@ def create_app(service: ReviewQueueService) -> Flask:
         approved_receipt = "approved_receipt" in request.form
 
         split_paths = request.form.getlist("split_path")
+        split_paths_new = request.form.getlist("split_path_new")
         split_amounts = request.form.getlist("split_amount")
         final_splits: list[Split] = []
-        for path, amt in zip(split_paths, split_amounts):
-            if path.strip():
-                try:
-                    final_splits.append(Split(account_path=path.strip(), amount=Decimal(amt)))
-                except (InvalidOperation, ValueError):
-                    continue
+        for i, amt in enumerate(split_amounts):
+            path = (split_paths[i] if i < len(split_paths) else "").strip()
+            if not path and i < len(split_paths_new):
+                path = (split_paths_new[i] or "").strip()
+            if not path:
+                continue
+            try:
+                final_splits.append(Split(account_path=path, amount=Decimal(amt)))
+            except (InvalidOperation, ValueError):
+                continue
 
         if not final_splits:
             final_splits = proposal.suggested_splits

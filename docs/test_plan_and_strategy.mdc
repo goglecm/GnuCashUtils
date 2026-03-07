@@ -1,6 +1,6 @@
 # Test Plan & Strategy (v1)
 
-## Status: Implemented — 296 tests passing
+## Status: Implemented — 302 tests passing
 
 ## Objectives
 - Provide immediate, repeatable confidence that all modules work correctly.
@@ -32,14 +32,14 @@
 |-----------|-------|-----------------|
 | `test_config_and_domain.py` | 12 | `config`, `domain/models` |
 | `test_state_repository.py` | 16 | `state/repository` (incl. Proposal original/None fields roundtrip) |
-| `test_gnucash_loader.py` | 19 | `gnucash/loader` (load, filter incl. path-segment Unspecified/Imbalance, backup, write) |
-| `test_email_pipeline.py` | 32 | `email/parser` (incl. body filtering, entity decoding, edge cases), `email/index` |
+| `test_gnucash_loader.py` | 21 | `gnucash/loader` (load, filter, transfer only when description suggests it, backup, write) |
+| `test_email_pipeline.py` | 33 | `email/parser` (body filtering incl. style/CSS strip, entity decoding), `email/index` |
 | `test_receipt_pipeline.py` | 17 | `receipt/ocr`, `receipt/repository` |
 | `test_matching.py` | 22 | `matching/email_matcher` (incl. tolerance-zero, no-amount/empty-amount exclusion), `matching/receipt_matcher` |
 | `test_ml_predictor.py` | 15 | `ml/predictor` (CategoryPredictor, FeedbackTrainer) |
-| `test_pipeline.py` | 9 | `services/pipeline` (incl. LLM connection test, email index min_date from earliest expense candidate) |
+| `test_pipeline.py` | 10 | `services/pipeline` (account_paths saved, LLM connection test, email index min_date) |
 | `test_apply_engine.py` | 15 | `apply/engine` (dry-run, apply, journal, rollback, audit, receipt not moved on amount mismatch) |
-| `test_review.py` | 19 | `review/service`, `review/webapp` (Flask test client, before/after view, sort order, select-all, None tx_date) |
+| `test_review.py` | 24 | `review/service` (get_account_paths), `review/webapp` (review page, category dropdown, decide with create-new) |
 | `test_integration.py` | 3 | Full cycle: run->review->apply, Flask flow, CLI dispatch |
 | `test_cli.py` | 4 | `cli` (parser, flags, LLM args); `test_cli_flags.py` covers `--llm-use-web` |
 | `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |

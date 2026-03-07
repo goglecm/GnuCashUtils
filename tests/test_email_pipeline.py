@@ -121,6 +121,18 @@ class TestBodyFiltering:
         assert "£100" in _strip_html("&pound;100")
         assert "£" in _strip_html("&#163;50")
 
+    def test_strip_html_removes_style_blocks_and_css_cruft(self) -> None:
+        """Outlook-style inline CSS and style blocks are removed so body is readable."""
+        html = (
+            "<p>Hello</p><style>/** Prevent Outlook Purple Links **/\n"
+            ".greyLink a:link { color: #949595; }</style><p>World</p>"
+        )
+        out = _strip_html(html)
+        assert "Hello" in out and "World" in out
+        assert "Prevent Outlook Purple Links" not in out
+        assert "greyLink" not in out
+        assert "#949595" not in out
+
     def test_filter_body_preserves_dashes_in_text(self) -> None:
         """'--see attached' should NOT trigger signature removal (only '-- ' does)."""
         body = "Hello\n--see attached receipt\nThanks"

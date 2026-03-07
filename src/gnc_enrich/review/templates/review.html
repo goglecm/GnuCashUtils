@@ -168,10 +168,19 @@
 
         <div class="field" style="margin-top:0.75rem;">
             <label>Splits</label>
+            <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.5rem;">Choose a category from the list or create a new one (e.g. Expenses:MyCategory).</p>
             {% for split in proposal.suggested_splits %}
-            <div class="split-row">
-                <input type="text" name="split_path" value="{{ split.account_path }}" placeholder="Account path">
-                <input type="text" name="split_amount" value="{{ split.amount }}" placeholder="Amount">
+            {% set paths_list = account_paths or [] %}
+            {% set path_in_list = split.account_path in paths_list %}
+            <div class="split-row" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+                <select name="split_path" class="split-path-select" style="min-width:14rem;" data-index="{{ loop.index0 }}">
+                    <option value="">— Create new —</option>
+                    {% for ap in paths_list %}
+                    <option value="{{ ap }}" {% if split.account_path == ap %}selected{% endif %}>{{ ap }}</option>
+                    {% endfor %}
+                </select>
+                <input type="text" name="split_path_new" class="split-path-new" value="{{ split.account_path if not path_in_list and split.account_path else '' }}" placeholder="New category path (e.g. Expenses:MyCategory)" style="min-width:14rem; display:{{ 'inline-block' if not path_in_list else 'none' }};">
+                <input type="text" name="split_amount" value="{{ split.amount }}" placeholder="Amount" style="width:6rem;">
             </div>
             {% endfor %}
         </div>
@@ -197,12 +206,20 @@
 <script>
 (function() {
     var btn = document.getElementById('toggle-emails');
-    if (!btn) return;
-    btn.addEventListener('click', function() {
-        var boxes = document.querySelectorAll('.email-check');
-        var allChecked = Array.prototype.every.call(boxes, function(b) { return b.checked; });
-        boxes.forEach(function(b) { b.checked = !allChecked; });
-        btn.textContent = allChecked ? 'Select All' : 'Deselect All';
+    if (btn) {
+        btn.addEventListener('click', function() {
+            var boxes = document.querySelectorAll('.email-check');
+            var allChecked = Array.prototype.every.call(boxes, function(b) { return b.checked; });
+            boxes.forEach(function(b) { b.checked = !allChecked; });
+            btn.textContent = allChecked ? 'Select All' : 'Deselect All';
+        });
+    }
+    document.querySelectorAll('.split-path-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            var row = this.closest('.split-row');
+            var newInput = row ? row.querySelector('.split-path-new') : null;
+            if (newInput) newInput.style.display = this.value === '' ? 'inline-block' : 'none';
+        });
     });
 })();
 </script>

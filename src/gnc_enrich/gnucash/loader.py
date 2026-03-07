@@ -134,7 +134,8 @@ class GnuCashLoader:
         are included. \"Settled\" transfers (all splits to bank/asset/liability)
         are excluded so they do not appear in the review queue. When a transaction
         has exactly one split to Unspecified/Imbalance and one to an own account
-        (bank/asset), it is marked is_unsettled_transfer=True for the transfer queue.
+        (bank/asset) and the description suggests a transfer (e.g. \"transfer\",
+        \"to savings\"), it is marked is_unsettled_transfer=True for the transfer queue.
         """
         today = date.today()
         skipped = skipped_ids or set()
@@ -285,7 +286,9 @@ class GnuCashLoader:
         return True
 
     def _is_unsettled_transfer(self, tx: Transaction) -> bool:
-        """True if exactly one split is Unspecified/Imbalance and the other is own account (bank/asset)."""
+        """True if exactly one split is Unspecified/Imbalance, the other is own account (bank/asset),
+        and the description suggests a transfer (e.g. 'transfer', 'to savings') so we don't
+        treat every Bank+Unspecified expense as a transfer."""
         if not self._has_target_account(tx) or len(tx.splits) != 2:
             return False
         target_idx = None
@@ -299,7 +302,11 @@ class GnuCashLoader:
             return False
         other_idx = 1 - target_idx
         acct = self._find_account_by_path(tx.splits[other_idx].account_path)
-        return acct is not None and acct.account_type in _TRANSFER_TYPES
+        if acct is None or acct.account_type not in _TRANSFER_TYPES:
+            return False
+        desc = (tx.description or "").lower()
+        transfer_keywords = ("transfer", "to savings", "savings", "between accounts", "move to")
+        return any(kw in desc for kw in transfer_keywords)
 
 
 class GnuCashWriter:

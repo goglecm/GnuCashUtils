@@ -142,6 +142,22 @@ class TestReviewQueueService:
         ))
         assert svc.is_decided("tx1") is True
 
+    def test_get_account_paths_empty_without_run(self, tmp_path: Path) -> None:
+        """Without a pipeline run, account_paths is empty (dropdown shows only Create new)."""
+        state = StateRepository(tmp_path)
+        _seed_proposals(state)
+        svc = ReviewQueueService(state)
+        assert svc.get_account_paths() == []
+
+    def test_get_account_paths_after_run(self, tmp_path: Path) -> None:
+        """After pipeline run, account_paths is populated from GnuCash book."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("account_paths", {"paths": ["Expenses:Food", "Current Account", "Unspecified"]})
+        svc = ReviewQueueService(state)
+        paths = svc.get_account_paths()
+        assert "Expenses:Food" in paths
+        assert "Current Account" in paths
+
 
 # -- Flask web app ------------------------------------------------------------
 
@@ -193,6 +209,26 @@ class TestReviewWebApp:
             "split_amount": "25.00",
         }, follow_redirects=False)
         assert resp.status_code == 302
+
+    def test_decide_with_create_new_category(self, tmp_path: Path) -> None:
+        """Submitting with split_path_new (Create new) uses that as the category."""
+        state = StateRepository(tmp_path)
+        _seed_proposals(state)
+        svc = ReviewQueueService(state)
+        app = create_app(svc)
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        client.post("/review/p1/decide", data={
+            "action": "approve",
+            "description": "Tesco 15/01/2025",
+            "split_path": "",
+            "split_path_new": "Expenses:Groceries",
+            "split_amount": "25.00",
+        })
+        decisions = state.load_decisions()
+        assert len(decisions) == 1
+        assert decisions[0].final_splits[0].account_path == "Expenses:Groceries"
 
     def test_skip_decision(self, client) -> None:
         client.post("/review/p1/decide", data={

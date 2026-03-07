@@ -130,6 +130,20 @@ def test_run_config_metadata_saved(tmp_path: Path) -> None:
     assert "gnucash_path" in meta
 
 
+def test_account_paths_saved_after_pipeline_run(tmp_path: Path) -> None:
+    """Pipeline persists GnuCash account paths to state for review UI dropdown."""
+    dirs = _setup_pipeline_dirs(tmp_path)
+    config = _make_config(dirs)
+    EnrichmentPipeline().run(config)
+
+    state = StateRepository(dirs["state"])
+    meta = state.load_metadata("account_paths")
+    assert meta is not None
+    paths = meta.get("paths", [])
+    assert isinstance(paths, list)
+    assert "Expenses:Food" in paths or "Current Account" in paths
+
+
 def test_proposals_have_evidence(tmp_path: Path) -> None:
     dirs = _setup_pipeline_dirs(tmp_path)
     config = _make_config(dirs)

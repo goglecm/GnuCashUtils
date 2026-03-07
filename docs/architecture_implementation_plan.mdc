@@ -2,7 +2,7 @@
 
 ## Status: Implemented (v1)
 
-All modules have been implemented with full test coverage (296 tests).
+All modules have been implemented with full test coverage (302 tests).
 
 ## Package Layout
 
@@ -69,19 +69,19 @@ src/gnc_enrich/
 |--------|--------|-------------|
 | `config.py` | Done | RunConfig, ApplyConfig, ReviewConfig, LlmConfig dataclasses |
 | `domain/models.py` | Done | Transaction, Split, Account, Evidence, Proposal (incl. tx_date/tx_amount/original_description/original_splits), ReviewDecision, AuditEntry, SkipRecord |
-| `gnucash/loader.py` | Done | GnuCashLoader (gzip XML), GnuCashWriter (backup + write + new account creation); candidate filter: Unspecified/Imbalance-GBP only, settled transfers excluded, unsettled (one leg target + one own account) marked for transfer queue |
-| `email/parser.py` | Done | EmlParser using stdlib email + GBP amount regex; body filtered (HTML stripped, signatures/quoted replies removed) before amount extraction; full body stored |
+| `gnucash/loader.py` | Done | GnuCashLoader (gzip XML), GnuCashWriter (backup + write + new account creation); candidate filter: Unspecified/Imbalance-GBP only, settled excluded, unsettled transfer only when description suggests transfer (e.g. "transfer", "to savings") |
+| `email/parser.py` | Done | EmlParser using stdlib email + GBP amount regex; body filtered (HTML stripped, `<style>` and CSS comments/rules removed, signatures/quoted replies removed) before amount extraction; full body stored |
 | `email/index.py` | Done | JSONL-based persistent index with recursive subdir scanning, incremental updates; progress logged every 5000 processed emails; search requires amount match when amount filter is supplied |
 | `receipt/ocr.py` | Done | ReceiptOcrEngine (Tesseract + optional LLM fallback), total/line-item extraction |
 | `receipt/repository.py` | Done | ReceiptRepository: list unprocessed, move to processed with conflict naming |
 | `matching/email_matcher.py` | Done | Multi-signal scoring (amount required, date proximity, text tokens); emails without matching amounts are excluded |
 | `matching/receipt_matcher.py` | Done | One-to-one matching with amount tolerance, double-match prevention |
-| `ml/predictor.py` | Done | TF-IDF + SGDClassifier, keyword fallback, refund detection, optional LLM rationale (with optional use_web: DuckDuckGo snippets injected into prompt), evidence-driven description enrichment, terse item lookup; populates original tx data in Proposal |
+| `ml/predictor.py` | Done | TF-IDF + SGDClassifier, keyword fallback, refund detection, never suggests Unspecified/Imbalance-GBP (fallback Expenses:Miscellaneous), optional LLM rationale (use_web), evidence-driven description, terse item lookup; populates original tx data in Proposal |
 | `review/service.py` | Done | ReviewQueueService: proposal queue, decision capture, skip persistence, evidence-driven enrichment on submit |
 | `review/webapp.py` | Done | Flask app with before/after transaction view, queue sorted by date, evidence panel with select/deselect all, evidence approval checkboxes, approve/edit/skip controls |
 | `apply/engine.py` | Done | Dry-run report, apply with backup + audit + journal, rollback |
 | `state/repository.py` | Done | JSON/JSONL persistence for all state artifacts with schema version headers |
-| `services/pipeline.py` | Done | EnrichmentPipeline wiring all components end-to-end; LLM connection test at run start when enabled |
+| `services/pipeline.py` | Done | EnrichmentPipeline wiring all components; saves account_paths to state for review dropdown; LLM connection test at run start when enabled |
 | `cli.py` | Done | run/review/apply commands with LLM flags (incl. --llm-use-web), dispatches to real implementations |
 
 ## Test Coverage
@@ -90,18 +90,18 @@ src/gnc_enrich/
 |-----------|-------|---------------|
 | `test_config_and_domain.py` | 12 | Config defaults, domain model creation, enum values |
 | `test_state_repository.py` | 16 | JSON/JSONL persistence roundtrips for all state types incl. Proposal original fields and None-field handling |
-| `test_gnucash_loader.py` | 19 | XML loading, candidate filtering (incl. path-segment Unspecified/Imbalance), backup, write-back |
-| `test_email_pipeline.py` | 32 | EML parsing, amount extraction, body filtering (HTML/signature/quote stripping, entity decoding, edge cases), index build/search |
+| `test_gnucash_loader.py` | 21 | XML loading, candidate filtering (transfer only when description suggests it, path-segment Unspecified/Imbalance), backup, write-back |
+| `test_email_pipeline.py` | 33 | EML parsing, amount extraction, body filtering (HTML/style/CSS stripping, signature/quote), index build/search |
 | `test_receipt_pipeline.py` | 17 | OCR extraction, total parsing, repository operations |
 | `test_matching.py` | 22 | Email/receipt scoring, tolerance boundaries, double-match, tolerance-zero exact matching, no-amount exclusion, empty-amount exclusion |
 | `test_ml_predictor.py` | 15 | Training, prediction, fallback, LLM path, feedback |
-| `test_pipeline.py` | 9 | End-to-end pipeline orchestration, LLM connection test, email index min_date from earliest expense candidate |
+| `test_pipeline.py` | 10 | Pipeline orchestration, account_paths saved, LLM connection test, email index min_date |
 | `test_apply_engine.py` | 15 | Dry-run, apply, backup, journal, audit, rollback, receipt not moved on amount mismatch |
-| `test_review.py` | 19 | Queue service logic + Flask test client routes incl. before/after view, sort order, select-all button, None tx_date sort |
+| `test_review.py` | 24 | Queue service (get_account_paths), Flask client (review, category dropdown, decide with create-new) |
 | `test_integration.py` | 3 | Full run->review->apply cycle, Flask client flow, CLI dispatch |
 | `test_cli.py` | 4 | Parser contracts, flag defaults, LLM args |
 | `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
 | `test_system.py` | 17 | Full system tests: multi-subdir emails, review cycle, apply+rollback, Flask webapp |
 | `test_cli_flags.py` | 37 | Every CLI flag: verbose, run/review/apply flags, --llm-use-web, dispatch tests |
 | `test_system_scenarios.py` | 11 | Scenarios: imbalance-only, zero candidates, date window, multiple receipts, nested emails, empty book, realistic format |
-| **Total** | **296** | |
+| **Total** | **302** | |
