@@ -1,11 +1,41 @@
-"""Persistence layer for receipt evidence and move lifecycle."""
+"""Receipt file management: listing unprocessed and moving to processed dir."""
 
+from __future__ import annotations
+
+import logging
+import shutil
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+_RECEIPT_GLOBS = ("*.jpg", "*.jpeg", "*.png", "*.heic", "*.heif")
 
 
 class ReceiptRepository:
+
     def list_unprocessed(self, receipts_dir: Path) -> list[Path]:
-        raise NotImplementedError
+        """Return all receipt image files in the given directory."""
+        if not receipts_dir.is_dir():
+            return []
+        files: list[Path] = []
+        for pattern in _RECEIPT_GLOBS:
+            files.extend(receipts_dir.glob(pattern))
+        files.sort(key=lambda p: p.name)
+        return files
 
     def mark_processed(self, receipt_path: Path, processed_dir: Path) -> Path:
-        raise NotImplementedError
+        """Move a receipt to the processed directory with conflict-safe naming."""
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        dest = processed_dir / receipt_path.name
+
+        if dest.exists():
+            stem = receipt_path.stem
+            suffix = receipt_path.suffix
+            counter = 1
+            while dest.exists():
+                dest = processed_dir / f"{stem}_{counter}{suffix}"
+                counter += 1
+
+        shutil.move(str(receipt_path), str(dest))
+        logger.info("Moved receipt %s -> %s", receipt_path, dest)
+        return dest

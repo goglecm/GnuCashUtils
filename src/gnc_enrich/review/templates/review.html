@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Review: {{ proposal.tx_id }}{% endblock %}
+{% block content %}
+
+<div class="card">
+    <h2>Transaction Details</h2>
+    <div class="field"><label>Transaction ID</label><div class="value">{{ proposal.tx_id }}</div></div>
+    <div class="field"><label>Current Description</label><div class="value">{{ proposal.suggested_description }}</div></div>
+    <div class="field">
+        <label>Confidence</label>
+        <div class="value">
+            {% set conf_pct = (proposal.confidence * 100)|int %}
+            <span class="confidence {% if proposal.confidence >= 0.7 %}high{% elif proposal.confidence >= 0.4 %}medium{% else %}low{% endif %}">
+                {{ conf_pct }}%
+            </span>
+        </div>
+    </div>
+    <div class="field"><label>Rationale</label><div class="value">{{ proposal.rationale }}</div></div>
+</div>
+
+<div class="card">
+    <h2>Suggested Splits</h2>
+    {% for split in proposal.suggested_splits %}
+    <div class="field">
+        <span>{{ split.account_path }}</span>
+        <span class="amount" style="float:right">&pound;{{ split.amount }}</span>
+    </div>
+    {% endfor %}
+</div>
+
+{% if proposal.evidence %}
+{% if proposal.evidence.emails %}
+<div class="card">
+    <h2>Matched Emails ({{ proposal.evidence.emails|length }})</h2>
+    {% for em in proposal.evidence.emails %}
+    <div class="evidence-item">
+        <span class="score">Score: {{ "%.1f"|format(em.relevance_score) }}</span>
+        <div class="sender">{{ em.sender }}</div>
+        <div>{{ em.subject }}</div>
+        <div style="color:var(--muted);font-size:0.85rem;">{{ em.sent_at.strftime('%d/%m/%Y %H:%M') if em.sent_at else '' }}</div>
+        {% if em.parsed_amounts %}
+        <div style="font-size:0.85rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if proposal.evidence.receipt %}
+<div class="card">
+    <h2>Matched Receipt</h2>
+    <div class="field"><label>Source</label><div class="value">{{ proposal.evidence.receipt.source_path }}</div></div>
+    {% if proposal.evidence.receipt.parsed_total %}
+    <div class="field"><label>Total</label><div class="value amount">&pound;{{ proposal.evidence.receipt.parsed_total }}</div></div>
+    {% endif %}
+    {% if proposal.evidence.receipt.line_items %}
+    <div class="field"><label>Line Items</label></div>
+    {% for item in proposal.evidence.receipt.line_items %}
+    <div style="margin-left:1rem;">{{ item.description }} <span class="amount">&pound;{{ item.amount }}</span></div>
+    {% endfor %}
+    {% endif %}
+    <div class="field" style="margin-top:0.5rem;"><label>OCR Text</label><pre style="white-space:pre-wrap;font-size:0.85rem;background:var(--bg);padding:0.5rem;border-radius:4px;">{{ proposal.evidence.receipt.ocr_text[:500] }}</pre></div>
+</div>
+{% endif %}
+{% endif %}
+
+{% if not decided %}
+<div class="card">
+    <h2>Your Decision</h2>
+    <form method="POST" action="{{ url_for('decide', proposal_id=proposal.proposal_id) }}">
+        <div class="field">
+            <label>Description</label>
+            <input type="text" name="description" value="{{ proposal.suggested_description }}">
+        </div>
+
+        <div class="field" style="margin-top:0.75rem;">
+            <label>Splits</label>
+            {% for split in proposal.suggested_splits %}
+            <div class="split-row">
+                <input type="text" name="split_path" value="{{ split.account_path }}" placeholder="Account path">
+                <input type="text" name="split_amount" value="{{ split.amount }}" placeholder="Amount">
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="field" style="margin-top:0.75rem;">
+            <label>Note (optional)</label>
+            <textarea name="note" placeholder="Any notes about this decision..."></textarea>
+        </div>
+
+        <div class="actions">
+            <button type="submit" name="action" value="approve" class="btn btn-approve">Approve</button>
+            <button type="submit" name="action" value="edit" class="btn btn-edit">Edit &amp; Approve</button>
+            <button type="submit" name="action" value="skip" class="btn btn-skip">Skip</button>
+        </div>
+    </form>
+</div>
+{% else %}
+<div class="card">
+    <p style="color:var(--success);font-weight:600;">This transaction has already been decided.</p>
+</div>
+{% endif %}
+
+{% endblock %}

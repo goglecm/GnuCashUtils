@@ -1,0 +1,16 @@
+From: billing@netflix.com
+To: john@example.com
+Subject: Your Netflix payment of GBP 15.99
+Date: Mon, 20 Jan 2025 06:00:00 +0000
+Message-ID: <netflix-bill-004@netflix.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Hi John,
+
+Your monthly Netflix subscription of GBP 15.99 has been charged.
+
+Next billing date: 20 February 2025.
+
+Thanks,
+Netflix

@@ -1,53 +1,58 @@
 # Test Plan & Strategy (v1)
 
+## Status: Implemented — 142 tests passing
+
 ## Objectives
-- Provide immediate, repeatable confidence that the project skeleton remains importable and callable.
-- Establish test infrastructure now so feature teams can add behavior tests module-by-module as implementations land.
-- Ensure each current class/module has a corresponding test mechanism (contract/smoke test scaffold).
+- Provide immediate, repeatable confidence that all modules work correctly.
+- Cover happy paths, edge cases, and failure paths for each module.
+- End-to-end integration tests verify the full run -> review -> apply cycle.
 
 ## Testing Levels
-1. **Static/contract tests (current)**
-   - Verify all modules import.
-   - Verify dataclass/domain/config constructors.
-   - Verify abstract/stub methods currently raise `NotImplementedError` where expected.
-   - Verify CLI parser and command contracts.
 
-2. **Unit tests (next, per module implementation)**
-   - Pure function/service logic with mocks/fakes.
+1. **Unit tests**
+   - Pure function/service logic with real fixtures and constructed data.
    - Matching score logic, filters, state transitions.
+   - Config and domain model construction and defaults.
 
-3. **Adapter tests (next)**
-   - GnuCash XML/SQLite read/write adapters with fixture books.
-   - EML parser with real-world malformed samples.
-   - Receipt OCR pipeline with image fixtures.
+2. **Adapter tests**
+   - GnuCash XML read/write with synthetic gzip-compressed fixture.
+   - EML parser with real-format fixture `.eml` files.
+   - Receipt OCR with programmatically generated images (via Pillow).
+   - State repository JSON/JSONL roundtrip tests.
 
-4. **Integration tests (next)**
+3. **Integration tests**
    - End-to-end `run -> review decision -> apply` flow against temporary state dir.
+   - Flask test client verifying web routes and decision flow.
+   - CLI dispatch verification.
    - Backup/audit/journal artifacts and rollback behavior.
 
-5. **Performance/regression tests (next)**
-   - Indexing and matching throughput against representative synthetic data volumes.
-   - Memory/storage budget checks to keep workspace under target limits.
+## Test Matrix
 
-## Test Matrix (Current Skeleton Coverage)
-- `gnc_enrich.__main__`: module invocation entrypoint imports.
-- `gnc_enrich.cli`: parser/subcommands/required args.
-- `gnc_enrich.config`: config dataclass defaults and required fields.
-- `gnc_enrich.domain.models`: dataclass creation and value retention.
-- `gnc_enrich.gnucash.loader`: contract methods raise until implemented.
-- `gnc_enrich.email.parser`, `gnc_enrich.email.index`: stub contract tests.
-- `gnc_enrich.receipt.ocr`, `gnc_enrich.receipt.repository`: stub contract tests.
-- `gnc_enrich.matching.email_matcher`, `gnc_enrich.matching.receipt_matcher`: stub contract tests.
-- `gnc_enrich.ml.predictor`: predictor/trainer stub contract tests.
-- `gnc_enrich.review.service`, `gnc_enrich.review.webapp`: stub contract tests.
-- `gnc_enrich.apply.engine`: stub contract tests.
-- `gnc_enrich.state.repository`: stub contract tests.
-- `gnc_enrich.services.pipeline`: stub contract tests.
+| Test File | Count | Modules Covered |
+|-----------|-------|-----------------|
+| `test_config_and_domain.py` | 12 | `config`, `domain/models` |
+| `test_state_repository.py` | 13 | `state/repository` |
+| `test_gnucash_loader.py` | 17 | `gnucash/loader` (load, filter, backup, write) |
+| `test_email_pipeline.py` | 17 | `email/parser`, `email/index` |
+| `test_receipt_pipeline.py` | 17 | `receipt/ocr`, `receipt/repository` |
+| `test_matching.py` | 15 | `matching/email_matcher`, `matching/receipt_matcher` |
+| `test_ml_predictor.py` | 12 | `ml/predictor` (CategoryPredictor, FeedbackTrainer) |
+| `test_pipeline.py` | 6 | `services/pipeline` |
+| `test_apply_engine.py` | 11 | `apply/engine` (dry-run, apply, rollback, audit) |
+| `test_review.py` | 15 | `review/service`, `review/webapp` (Flask test client) |
+| `test_integration.py` | 3 | Full cycle: run->review->apply, Flask flow, CLI dispatch |
+| `test_cli.py` | 4 | `cli` (parser, flags, LLM args) |
+
+## Fixtures
+
+- **`tests/conftest.py`**: `SAMPLE_GNUCASH_XML` string constant, `sample_gnucash_path` (gzip), `sample_gnucash_xml_path` (plain XML)
+- **`tests/fixtures/emails/`**: 5 synthetic `.eml` files (order confirmation, bank alert, receipt email, subscription, unrelated newsletter)
+- **Receipt images**: Generated programmatically in test setup using Pillow `ImageDraw`
 
 ## Tooling
-- Test runner: `pytest`
+- Test runner: `pytest >= 8.0`
 - Python support: CPython 3.11+
-- Optional future plugins (when needed):
+- Optional future plugins:
   - `pytest-cov` for coverage gates
   - `pytest-xdist` for parallelization
   - `hypothesis` for property-based matching/parser tests
@@ -56,17 +61,12 @@
 - Test file naming: `tests/test_<module>.py`
 - Test function naming: `test_<behavior>`
 - Use AAA structure (Arrange/Act/Assert).
-- Prefer lightweight fixtures in `tests/conftest.py`.
-- For not-yet-implemented features, test explicit `NotImplementedError` to keep intent clear.
+- Shared fixtures in `tests/conftest.py`.
+- Use `tmp_path` for all I/O tests.
 
-## Exit Criteria (Current Stage)
-- All tests pass locally via `pytest`.
-- CLI help and parser tests pass.
-- Each module/class has at least one test mechanism in place.
-
-## Evolution Plan
-- As each module is implemented:
-  1. Replace `NotImplementedError` tests with behavioral tests.
-  2. Add happy-path + edge-case + failure-path tests.
-  3. Add fixture data under `tests/fixtures/` for adapter-level validation.
-  4. Add integration test scenario for any cross-module behavior introduced.
+## Future Test Enhancements
+- Add coverage reporting via `pytest-cov`.
+- Add CI job to run `pytest` on every PR.
+- Add larger synthetic datasets for performance/regression tests.
+- Add `hypothesis` property-based tests for matching scoring edge cases.
+- Add sample real-world degraded receipt images for OCR robustness testing.

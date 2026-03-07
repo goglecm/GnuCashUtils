@@ -1,0 +1,198 @@
+"""Tests for the apply engine: dry-run, apply, backup, rollback, audit."""
+
+import gzip
+import json
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from gnc_enrich.apply.engine import ApplyEngine
+from gnc_enrich.domain.models import Proposal, ReviewDecision, SkipRecord, Split
+from gnc_enrich.gnucash.loader import GnuCashLoader
+from gnc_enrich.state.repository import StateRepository
+from tests.conftest import SAMPLE_GNUCASH_XML
+
+
+def _setup_state(tmp_path: Path) -> tuple[Path, Path]:
+    """Set up a GnuCash file and state dir with proposals + decisions."""
+    gnucash = tmp_path / "book.gnucash"
+    with gzip.open(gnucash, "wb") as f:
+        f.write(SAMPLE_GNUCASH_XML.encode("utf-8"))
+
+    state_dir = tmp_path / "state"
+    state = StateRepository(state_dir)
+
+    state.save_metadata("run_config", {
+        "gnucash_path": str(gnucash),
+        "processed_receipts_dir": str(tmp_path / "processed"),
+    })
+
+    proposals = [
+        Proposal(
+            proposal_id="p1", tx_id="tx_unspec1",
+            suggested_description="Card Payment - Tesco 15/01/2025",
+            suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            confidence=0.85, rationale="ML + email match",
+        ),
+        Proposal(
+            proposal_id="p2", tx_id="tx_unspec2",
+            suggested_description="Direct Debit 01/02/2025",
+            suggested_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
+            confidence=0.6, rationale="Heuristic",
+        ),
+        Proposal(
+            proposal_id="p3", tx_id="tx_imbalance1",
+            suggested_description="POS Transaction 20/01/2025",
+            suggested_splits=[Split(account_path="Expenses:Miscellaneous", amount=Decimal("32.00"))],
+            confidence=0.4, rationale="Low confidence",
+        ),
+    ]
+    state.save_proposals(proposals)
+
+    state.save_decision(ReviewDecision(
+        tx_id="tx_unspec1", action="approve",
+        final_description="Tesco Groceries 15/01/2025",
+        final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+        decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+    ))
+    state.save_decision(ReviewDecision(
+        tx_id="tx_unspec2", action="edit",
+        final_description="BT Broadband 01/02/2025",
+        final_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
+    ))
+    state.save_decision(ReviewDecision(
+        tx_id="tx_imbalance1", action="skip",
+        final_description="",
+        final_splits=[],
+    ))
+
+    return gnucash, state_dir
+
+
+class TestDryRun:
+
+    def test_generates_report_file(self, tmp_path: Path) -> None:
+        _, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        report = engine.generate_dry_run_report(state_dir)
+        assert report.exists()
+        assert report.name == "dry_run_report.txt"
+
+    def test_report_contains_summary(self, tmp_path: Path) -> None:
+        _, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        report = engine.generate_dry_run_report(state_dir)
+        content = report.read_text()
+        assert "approve" in content.lower()
+        assert "skip" in content.lower()
+        assert "Summary" in content
+
+    def test_report_lists_all_decisions(self, tmp_path: Path) -> None:
+        _, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        report = engine.generate_dry_run_report(state_dir)
+        content = report.read_text()
+        assert "tx_unspec1" in content
+        assert "tx_unspec2" in content
+        assert "tx_imbalance1" in content
+
+
+class TestApply:
+
+    def test_apply_modifies_gnucash_file(self, tmp_path: Path) -> None:
+        gnucash, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        loader = GnuCashLoader()
+        txs = loader.load_transactions(gnucash)
+        tx_map = {t.tx_id: t for t in txs}
+        assert tx_map["tx_unspec1"].description == "Tesco Groceries 15/01/2025"
+        assert tx_map["tx_unspec2"].description == "BT Broadband 01/02/2025"
+
+    def test_apply_creates_backup(self, tmp_path: Path) -> None:
+        _, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        backup_dir = state_dir / "backups"
+        assert backup_dir.exists()
+        backups = list(backup_dir.glob("*.gnucash"))
+        assert len(backups) >= 1
+
+    def test_apply_writes_journal(self, tmp_path: Path) -> None:
+        _, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        journal_path = state_dir / "apply_journal.jsonl"
+        assert journal_path.exists()
+        entries = [json.loads(l) for l in journal_path.read_text().splitlines() if l.strip()]
+        assert len(entries) == 2  # only approved + edited
+        tx_ids = {e["tx_id"] for e in entries}
+        assert "tx_unspec1" in tx_ids
+        assert "tx_unspec2" in tx_ids
+        assert "tx_imbalance1" not in tx_ids  # skipped
+
+    def test_apply_writes_audit_log(self, tmp_path: Path) -> None:
+        _, state_dir = _setup_state(tmp_path)
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        state = StateRepository(state_dir)
+        audit = state.load_audit_log()
+        assert len(audit) == 2
+        assert audit[0].action in ("approve", "edit")
+
+    def test_apply_skips_when_no_decisions(self, tmp_path: Path) -> None:
+        gnucash = tmp_path / "book.gnucash"
+        with gzip.open(gnucash, "wb") as f:
+            f.write(SAMPLE_GNUCASH_XML.encode("utf-8"))
+
+        state_dir = tmp_path / "state"
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(gnucash)})
+        state.save_proposals([])
+
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+    def test_apply_fails_without_metadata(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        engine = ApplyEngine()
+        with pytest.raises(RuntimeError, match="No run_config"):
+            engine.apply(state_dir)
+
+
+class TestRollback:
+
+    def test_rollback_restores_original(self, tmp_path: Path) -> None:
+        gnucash, state_dir = _setup_state(tmp_path)
+
+        original_loader = GnuCashLoader()
+        original_txs = original_loader.load_transactions(gnucash)
+        original_desc = {t.tx_id: t.description for t in original_txs}
+
+        engine = ApplyEngine()
+        engine.apply(state_dir)
+
+        mod_loader = GnuCashLoader()
+        mod_txs = mod_loader.load_transactions(gnucash)
+        assert {t.tx_id: t.description for t in mod_txs}["tx_unspec1"] != original_desc["tx_unspec1"]
+
+        engine.rollback(state_dir)
+
+        restored_loader = GnuCashLoader()
+        restored_txs = restored_loader.load_transactions(gnucash)
+        assert {t.tx_id: t.description for t in restored_txs}["tx_unspec1"] == original_desc["tx_unspec1"]
+
+    def test_rollback_fails_without_backup(self, tmp_path: Path) -> None:
+        state_dir = tmp_path / "state"
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(tmp_path / "book.gnucash")})
+        engine = ApplyEngine()
+        with pytest.raises(RuntimeError, match="No backup"):
+            engine.rollback(state_dir)

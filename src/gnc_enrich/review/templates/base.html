@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GnuCash Enrichment Review{% endblock %}</title>
+    <style>
+        :root {
+            --bg: #f8f9fa; --surface: #ffffff; --border: #dee2e6;
+            --text: #212529; --muted: #6c757d; --primary: #0d6efd;
+            --success: #198754; --warning: #ffc107; --danger: #dc3545;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .container { max-width: 960px; margin: 0 auto; padding: 1rem; }
+        header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.75rem 0; margin-bottom: 1.5rem; }
+        header .container { display: flex; justify-content: space-between; align-items: center; }
+        header h1 { font-size: 1.25rem; }
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; }
+        .badge-info { background: #cfe2ff; color: #084298; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+        .card h2 { font-size: 1.1rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        .field { margin-bottom: 0.5rem; }
+        .field label { font-weight: 600; color: var(--muted); font-size: 0.85rem; display: block; }
+        .field .value { font-size: 1rem; }
+        .amount { font-family: "SF Mono", Consolas, monospace; font-weight: 600; }
+        .confidence { font-weight: 600; }
+        .confidence.high { color: var(--success); }
+        .confidence.medium { color: var(--warning); }
+        .confidence.low { color: var(--danger); }
+        input[type="text"], textarea, select { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; font-size: 0.95rem; font-family: inherit; }
+        textarea { resize: vertical; min-height: 60px; }
+        .split-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center; }
+        .split-row input { flex: 1; }
+        .split-row input:last-child { max-width: 140px; }
+        .actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+        .btn { padding: 0.6rem 1.25rem; border: none; border-radius: 6px; font-size: 0.95rem; cursor: pointer; font-weight: 600; }
+        .btn-approve { background: var(--success); color: white; }
+        .btn-edit { background: var(--primary); color: white; }
+        .btn-skip { background: var(--muted); color: white; }
+        .btn:hover { opacity: 0.9; }
+        .evidence-item { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.5rem; }
+        .evidence-item .sender { font-weight: 600; }
+        .evidence-item .score { float: right; font-size: 0.85rem; color: var(--muted); }
+        a { color: var(--primary); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .queue-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+        .queue-item:last-child { border-bottom: none; }
+        .status-decided { color: var(--success); }
+        .status-pending { color: var(--muted); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>GnuCash Enrichment Review</h1>
+            <div>
+                <span class="badge badge-info">{{ pending }} pending / {{ total }} total</span>
+                <a href="{{ url_for('queue') }}" style="margin-left:1rem;">Queue</a>
+            </div>
+        </div>
+    </header>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

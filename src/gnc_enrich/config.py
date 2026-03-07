@@ -1,7 +1,26 @@
 """Application configuration models."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+
+
+class LlmMode(str, Enum):
+    DISABLED = "disabled"
+    OFFLINE = "offline"
+    ONLINE = "online"
+
+
+@dataclass(slots=True)
+class LlmConfig:
+    mode: LlmMode = LlmMode.DISABLED
+    endpoint: str = ""
+    model_name: str = ""
+    api_key: str = ""
+    temperature: float = 0.2
+    max_tokens: int = 1024
 
 
 @dataclass(slots=True)
@@ -14,6 +33,7 @@ class RunConfig:
     date_window_days: int = 7
     amount_tolerance: float = 0.50
     include_skipped: bool = False
+    llm: LlmConfig = field(default_factory=LlmConfig)
 
 
 @dataclass(slots=True)
@@ -22,6 +42,7 @@ class ApplyConfig:
     create_backup: bool = True
     backup_dir: Path | None = None
     in_place: bool = True
+    dry_run: bool = False
 
 
 @dataclass(slots=True)

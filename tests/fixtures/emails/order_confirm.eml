@@ -1,0 +1,18 @@
+From: orders@tesco.com
+To: john@example.com
+Subject: Your Tesco order confirmation - £25.00
+Date: Wed, 15 Jan 2025 10:30:00 +0000
+Message-ID: <tesco-001@tesco.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Dear John,
+
+Thank you for your order at Tesco.
+
+Order total: £25.00
+
+Your order has been processed and will be delivered soon.
+
+Regards,
+Tesco Customer Service

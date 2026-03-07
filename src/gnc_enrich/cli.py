@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from gnc_enrich.config import ApplyConfig, ReviewConfig, RunConfig
+from gnc_enrich.config import ApplyConfig, LlmConfig, LlmMode, ReviewConfig, RunConfig
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,17 +21,25 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--date-window-days", type=int, default=7)
     run.add_argument("--amount-tolerance", type=float, default=0.50)
     run.add_argument("--include-skipped", action="store_true")
+    run.add_argument(
+        "--llm-mode",
+        choices=["disabled", "offline", "online"],
+        default="disabled",
+    )
+    run.add_argument("--llm-endpoint", default="")
+    run.add_argument("--llm-model", default="")
 
     review = sub.add_parser("review", help="Run local web review app")
     review.add_argument("--state-dir", type=Path, required=True)
     review.add_argument("--host", default="127.0.0.1")
     review.add_argument("--port", type=int, default=7860)
 
-    apply = sub.add_parser("apply", help="Apply approved changes to GnuCash")
-    apply.add_argument("--state-dir", type=Path, required=True)
-    apply.add_argument("--create-backup", action="store_true")
-    apply.add_argument("--backup-dir", type=Path)
-    apply.add_argument("--in-place", action="store_true")
+    apply_cmd = sub.add_parser("apply", help="Apply approved changes to GnuCash")
+    apply_cmd.add_argument("--state-dir", type=Path, required=True)
+    apply_cmd.add_argument("--create-backup", action="store_true")
+    apply_cmd.add_argument("--backup-dir", type=Path)
+    apply_cmd.add_argument("--in-place", action="store_true")
+    apply_cmd.add_argument("--dry-run", action="store_true")
 
     return parser
 
@@ -41,7 +49,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "run":
-        _ = RunConfig(
+        llm = LlmConfig(
+            mode=LlmMode(args.llm_mode),
+            endpoint=args.llm_endpoint,
+            model_name=args.llm_model,
+        )
+        config = RunConfig(
             gnucash_path=args.gnucash_path,
             emails_dir=args.emails_dir,
             receipts_dir=args.receipts_dir,
@@ -50,20 +63,45 @@ def main(argv: list[str] | None = None) -> int:
             date_window_days=args.date_window_days,
             amount_tolerance=args.amount_tolerance,
             include_skipped=args.include_skipped,
+            llm=llm,
+        )
+        from gnc_enrich.services.pipeline import EnrichmentPipeline
+
+        result = EnrichmentPipeline().run(config)
+        print(
+            f"Pipeline complete: {result.proposal_count} proposals, "
+            f"{result.skipped_count} skipped"
         )
         return 0
 
     if args.command == "review":
-        _ = ReviewConfig(state_dir=args.state_dir, host=args.host, port=args.port)
+        config = ReviewConfig(state_dir=args.state_dir, host=args.host, port=args.port)
+        from gnc_enrich.review.webapp import ReviewWebApp
+        from gnc_enrich.review.service import ReviewQueueService
+        from gnc_enrich.state.repository import StateRepository
+
+        state_repo = StateRepository(config.state_dir)
+        service = ReviewQueueService(state_repo)
+        ReviewWebApp(service, config).run(config.host, config.port)
         return 0
 
     if args.command == "apply":
-        _ = ApplyConfig(
+        config = ApplyConfig(
             state_dir=args.state_dir,
             create_backup=args.create_backup,
             backup_dir=args.backup_dir,
             in_place=args.in_place,
+            dry_run=args.dry_run,
         )
+        from gnc_enrich.apply.engine import ApplyEngine
+
+        engine = ApplyEngine()
+        if config.dry_run:
+            report = engine.generate_dry_run_report(config.state_dir)
+            print(f"Dry-run report written to {report}")
+        else:
+            engine.apply(config.state_dir)
+            print("Changes applied successfully.")
         return 0
 
     parser.error(f"Unknown command: {args.command}")

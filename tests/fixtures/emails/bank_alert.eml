@@ -1,0 +1,12 @@
+From: alerts@bank.co.uk
+To: john@example.com
+Subject: Transaction alert
+Date: Thu, 16 Jan 2025 14:00:00 +0000
+Message-ID: <bank-alert-002@bank.co.uk>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+A payment of £25.00 was made from your account ending 1234.
+
+Merchant: TESCO STORES
+Date: 15/01/2025

@@ -6,29 +6,64 @@
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install -e .
-pip install pytest
+pip install -e ".[dev]"
 ```
+
+### System Dependencies
+
+- **Tesseract OCR**: Required for receipt processing.
+  - Fedora: `sudo dnf install tesseract`
+  - Ubuntu: `sudo apt install tesseract-ocr`
+  - macOS: `brew install tesseract`
+- **libheif**: Required for HEIC image support (installed via `pillow-heif` pip package).
 
 ## Running Tests
 
 From repository root:
 
 ```bash
-PYTHONPATH=src pytest
+pytest
 ```
 
 Useful selections:
 
 ```bash
 # Single file
-PYTHONPATH=src pytest tests/test_cli.py
+pytest tests/test_cli.py
 
 # Keyword filter
-PYTHONPATH=src pytest -k config
+pytest -k config
 
 # Verbose output
-PYTHONPATH=src pytest -vv
+pytest -vv
+
+# Run only integration tests
+pytest tests/test_integration.py -v
+```
+
+## Project Structure
+
+```
+src/gnc_enrich/          # Main package
+  cli.py                 # CLI entry points (run/review/apply)
+  config.py              # Configuration dataclasses
+  domain/models.py       # Domain entities (Transaction, Proposal, etc.)
+  gnucash/loader.py      # GnuCash XML parser and writer
+  email/parser.py        # .eml file parser
+  email/index.py         # Persistent email index (JSONL)
+  receipt/ocr.py         # Tesseract OCR + optional LLM fallback
+  receipt/repository.py  # Receipt file management
+  matching/              # Evidence-to-transaction matching
+  ml/predictor.py        # ML category prediction + feedback
+  review/service.py      # Review queue management
+  review/webapp.py       # Flask web app
+  review/templates/      # Jinja2 HTML templates
+  apply/engine.py        # Apply, backup, rollback, audit
+  state/repository.py    # JSON/JSONL state persistence
+  services/pipeline.py   # High-level orchestration
+tests/                   # Test suite (142 tests)
+  conftest.py            # Shared fixtures (sample GnuCash XML)
+  fixtures/emails/       # Sample .eml files
 ```
 
 ## How to Add Tests (Module Completion Workflow)
@@ -36,34 +71,48 @@ PYTHONPATH=src pytest -vv
 When implementing a module/class:
 
 1. Locate its test file in `tests/` (or add one using `tests/test_<module>.py`).
-2. Keep/update existing scaffold test(s) that prove imports and constructors.
-3. Replace `NotImplementedError` assertions with behavioral tests for real logic.
-4. Add at least:
+2. Add at least:
    - happy path
    - one edge case
    - one failure case (invalid input/exception path)
-5. If module touches I/O, add temporary-path based tests using `tmp_path` fixture.
-6. If adding new public APIs, add parser/API contract tests.
+3. If module touches I/O, add temporary-path based tests using `tmp_path` fixture.
+4. If adding new public APIs, add parser/API contract tests.
 
 ## Testing Expectations by Area
 
 - `cli.py`: parser contracts, required args, flag defaults, command dispatch.
 - `config.py` and `domain/models.py`: dataclass defaults, type/shape invariants.
-- Adapter modules (`gnucash`, `email`, `receipt`): fixture-driven parse/read/write tests.
-- Matching/ML modules: deterministic scoring/prediction tests with fixed seeds/mocks.
-- `review`, `state`, `apply`, `services`: workflow and state transition tests.
+- `gnucash/loader.py`: fixture-driven XML parse/write tests using `sample_gnucash_path` conftest fixture.
+- `email/*`: fixture-driven parse tests using `tests/fixtures/emails/` .eml files.
+- `receipt/*`: programmatically generated receipt images via Pillow.
+- `matching/*`: deterministic scoring/prediction tests with constructed evidence.
+- `ml/predictor.py`: train on synthetic history, verify predictions + LLM path (mocked).
+- `review/*`: service unit tests + Flask test client for web routes.
+- `apply/engine.py`: dry-run, apply, backup, rollback, audit verification.
+- `services/pipeline.py`: integration tests with full fixture data.
 
-## Suggested Future Enhancements
+## LLM Configuration
 
-- Add coverage reporting via `pytest-cov` once behavior tests expand.
-- Add CI job to run `pytest` on every PR.
-- Add `tests/fixtures/` datasets:
-  - sample XML + SQLite books
-  - sample `.eml` corpus
-  - sample receipt images (including low-legibility cases)
+The system supports optional LLM integration for enhanced categorization:
+
+```bash
+# Disabled (default, fully offline)
+python -m gnc_enrich run --llm-mode disabled ...
+
+# Local LLM (e.g., Ollama)
+python -m gnc_enrich run --llm-mode offline --llm-endpoint http://localhost:11434/v1/chat/completions --llm-model llama3 ...
+
+# Remote LLM (e.g., OpenAI-compatible API)
+python -m gnc_enrich run --llm-mode online --llm-endpoint https://api.example.com/v1/chat/completions --llm-model gpt-4 ...
+```
+
+LLM is used in two places:
+1. **Receipt OCR fallback**: When Tesseract fails to extract a total, the LLM attempts structured extraction.
+2. **Category rationale**: When ML classifier confidence is below 60%, the LLM provides an alternative suggestion.
 
 ## Troubleshooting
 
-- Import errors: ensure `PYTHONPATH=src` or install with `pip install -e .`.
+- Import errors: ensure `pip install -e ".[dev]"` was run.
 - Missing pytest: install with `pip install pytest`.
+- Tesseract not found: install the system package (see System Dependencies above).
 - Bytecode clutter: `find . -type d -name '__pycache__' -prune -exec rm -rf {} +`.

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Review Queue{% endblock %}
+{% block content %}
+<div class="card">
+    <h2>All Proposals</h2>
+    {% for p in proposals %}
+    <div class="queue-item">
+        <div>
+            <a href="{{ url_for('review', proposal_id=p.proposal_id) }}">{{ p.tx_id }}</a>
+            <span style="color:var(--muted);margin-left:0.5rem;">{{ p.suggested_description[:50] }}</span>
+        </div>
+        <div>
+            {% if p.tx_id in decided_ids %}
+            <span class="status-decided">Decided</span>
+            {% else %}
+            <span class="status-pending">Pending</span>
+            {% endif %}
+            <span class="badge badge-info" style="margin-left:0.5rem;">{{ (p.confidence * 100)|int }}%</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

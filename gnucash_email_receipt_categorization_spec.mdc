@@ -17,9 +17,9 @@ The system must:
 ## 2. Scope
 
 ### In Scope
-- Input GnuCash formats: **XML (`.gnucash`) and SQLite**.
+- Input GnuCash format: **XML (`.gnucash`)** — gzip-compressed XML.
 - Email ingestion from directory of `.eml` files.
-- Receipt ingestion from directory of images: **`jpeg` / `jpg` / `heic`**.
+- Receipt ingestion from directory of images: **`jpeg` / `jpg` / `png` / `heic` / `heif`**.
 - Matching transactions with evidence windows around transaction date.
 - ML/AI-assisted category predictions and confidence scoring.
 - One-by-one review workflow in a local web application.
@@ -28,6 +28,7 @@ The system must:
 - Persistence of indexed evidence and user feedback.
 
 ### Out of Scope (v1)
+- SQLite GnuCash file support (deferred to post-v1).
 - Drag-and-drop UX.
 - Bulk approval UX.
 - Non-GBP transaction editing.
@@ -56,9 +57,9 @@ The system must:
 ## 4. Inputs & Outputs
 
 ## 4.1 Inputs
-- `--gnucash-path`: path to input GnuCash file (XML or SQLite).
+- `--gnucash-path`: path to input GnuCash XML file (`.gnucash`).
 - `--emails-dir`: directory containing `.eml` files.
-- `--receipts-dir`: directory containing receipt images (`jpeg|jpg|heic`).
+- `--receipts-dir`: directory containing receipt images (`jpeg|jpg|png|heic|heif`).
 - `--processed-receipts-dir`: destination directory for approved/matched receipts.
 - Optional: `--state-dir` for indexes/cache/audit metadata.
 
@@ -93,9 +94,18 @@ User-configurable parameters must include at least:
 
 ## 6. System Architecture
 
-## 6.1 Components
+### 6.1 Technology Stack (v1)
+- **Language**: Python 3.11+
+- **GnuCash parsing**: `lxml` for XML (gzip-compressed `.gnucash` files)
+- **OCR**: `pytesseract` + `Pillow` + `pillow-heif`, with optional LLM fallback
+- **ML**: scikit-learn TF-IDF + SGDClassifier, optional LLM (local/remote) for rationale
+- **Web framework**: Flask + Jinja2 for review UI
+- **State persistence**: JSON/JSONL flat files
+- **Email parsing**: Python stdlib `email` module
+
+### 6.2 Components
 1. **GnuCash Loader/Writer**
-   - Detect XML vs SQLite.
+   - Detect gzip-compressed XML.
    - Parse accounts, splits, transactions, currencies.
    - Validate and apply approved mutations.
 2. **Candidate Selector**
@@ -103,7 +113,7 @@ User-configurable parameters must include at least:
    - Enforce GBP-only, non-future, non-transfer constraints.
 3. **Email Pipeline**
    - Parse `.eml` metadata and body.
-   - Build index optimized for amount/date/merchant/entity retrieval.
+   - Build JSONL index optimized for amount/date/merchant/entity retrieval.
 4. **Receipt Pipeline**
    - OCR receipts and detect line items/totals.
    - Match one receipt to one transaction.
@@ -138,12 +148,13 @@ User-configurable parameters must include at least:
 
 ## 7.2 Email Indexing
 - Must support large volumes (~70k emails) efficiently.
-- Persist index for reuse across runs.
+- Persist JSONL index for reuse across runs.
 - Provide incremental rebuild options if new emails appear.
 
 ## 7.3 Receipt Matching & OCR
-- Supported input types: jpg/jpeg/heic.
+- Supported input types: jpg/jpeg/png/heic/heif.
 - OCR should prioritize high-accuracy extraction on low-legibility documents.
+- Optional LLM fallback when Tesseract fails to extract totals.
 - One receipt may match only one transaction.
 - If approved and receipt/transaction totals are compatible:
   - apply decision
@@ -165,7 +176,7 @@ User-configurable parameters must include at least:
 2. Historical categorized transactions are mandatory training/context source.
 3. Confidence score required for each proposed category/split.
 4. Show model rationale/evidence links to user.
-5. Optional LLM “opinion/evidence synthesis” is allowed (online or offline), but system remains local-first and operable offline.
+5. Optional LLM "opinion/evidence synthesis" is allowed (online or offline), but system remains local-first and operable offline.
 6. User decisions (approve/edit/override/skip) must be captured for future learning.
 
 ---
@@ -235,9 +246,7 @@ Design goals:
 
 ---
 
-## 12. CLI Contract (Initial)
-
-Example command surface (illustrative):
+## 12. CLI Contract
 
 ```bash
 python -m gnc_enrich run \
@@ -248,7 +257,10 @@ python -m gnc_enrich run \
   --state-dir /path/state \
   --date-window-days 7 \
   --amount-tolerance 0.50 \
-  --mode dry-run
+  --llm-mode disabled \
+  --llm-endpoint "" \
+  --llm-model "" \
+  --include-skipped  # optional: re-process previously skipped transactions
 ```
 
 ```bash
@@ -256,7 +268,9 @@ python -m gnc_enrich review --state-dir /path/state --host 127.0.0.1 --port 7860
 ```
 
 ```bash
+python -m gnc_enrich apply --state-dir /path/state --dry-run
 python -m gnc_enrich apply --state-dir /path/state --create-backup --backup-dir /path/backups
+python -m gnc_enrich apply --state-dir /path/state --in-place
 ```
 
 Notes:
@@ -268,16 +282,17 @@ Notes:
 ## 13. Data Persistence (State)
 
 Persist at least:
-- `email_index.*`
-- `receipt_index.*`
-- `candidate_transactions.*`
-- `proposals.*`
-- `skip_state.*`
-- `feedback_events.*`
-- `audit_log.jsonl`
-- `apply_journal.*`
+- `email_index.jsonl` — parsed email evidence
+- `email_index_manifest.json` — tracks indexed filenames
+- `proposals.json` — generated proposals with evidence
+- `decisions.jsonl` — review decisions (append-only)
+- `skip_state.json` — skipped transaction records
+- `feedback_events.jsonl` — user feedback for retraining
+- `audit_log.jsonl` — complete audit trail
+- `apply_journal.jsonl` — undo journal for rollback
+- `run_config.json` — metadata from last pipeline run
 
-State should be versioned for forward migration.
+State includes schema version headers for forward migration.
 
 ---
 
@@ -293,10 +308,10 @@ State should be versioned for forward migration.
 ## 15. Acceptance Criteria (v1)
 
 A v1 implementation is acceptable when:
-1. It can ingest XML and SQLite GnuCash files.
+1. It can ingest XML GnuCash files.
 2. It filters only valid target transactions per domain rules.
 3. It parses/indexes large `.eml` sets and reuses index.
-4. It processes jpg/jpeg/heic receipts with OCR and transaction matching.
+4. It processes jpg/jpeg/png/heic/heif receipts with OCR and transaction matching.
 5. It supports split proposal/editing and grouped-category receipt items.
 6. It provides ML/AI-based category suggestions with confidence.
 7. It provides one-by-one web review with full evidence panel.
@@ -322,6 +337,7 @@ A v1 implementation is acceptable when:
 
 ## 17. Future Enhancements (Post-v1)
 
+- SQLite GnuCash file support.
 - Active learning queue prioritization.
 - Merchant normalization knowledge base.
 - Better refund-chain reconstruction.
