@@ -13,3 +13,4 @@ dist/
 .ruff_cache/
 htmlcov/
 .coverage
+tags
