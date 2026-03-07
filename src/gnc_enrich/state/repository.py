@@ -139,6 +139,7 @@ def _parse_evidence_packet(d: dict | None) -> EvidencePacket | None:
 
 
 def _parse_proposal(d: dict) -> Proposal:
+    tx_date_raw = d.get("tx_date")
     return Proposal(
         proposal_id=d["proposal_id"],
         tx_id=d["tx_id"],
@@ -147,6 +148,10 @@ def _parse_proposal(d: dict) -> Proposal:
         confidence=float(d["confidence"]),
         rationale=d["rationale"],
         evidence=_parse_evidence_packet(d.get("evidence")),
+        tx_date=_parse_date(tx_date_raw) if tx_date_raw else None,
+        tx_amount=_parse_decimal(d["tx_amount"]) if d.get("tx_amount") is not None else None,
+        original_description=d.get("original_description", ""),
+        original_splits=[_parse_split(s) for s in d.get("original_splits", [])],
     )
 
 

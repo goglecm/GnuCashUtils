@@ -154,6 +154,10 @@ class CategoryPredictor:
                 emails=emails,
                 receipt=receipt,
             ),
+            tx_date=tx.posted_date,
+            tx_amount=tx.amount,
+            original_description=tx.description,
+            original_splits=list(tx.splits),
         )
 
     def _check_refund_match(self, tx: Transaction) -> str | None:

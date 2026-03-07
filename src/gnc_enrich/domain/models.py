@@ -107,6 +107,10 @@ class Proposal:
     confidence: float
     rationale: str
     evidence: EvidencePacket | None = None
+    tx_date: date | None = None
+    tx_amount: Decimal | None = None
+    original_description: str = ""
+    original_splits: list[Split] = field(default_factory=list)
 
 
 @dataclass(slots=True)

@@ -2,21 +2,32 @@
 {% block title %}Review Queue{% endblock %}
 {% block content %}
 <div class="card">
-    <h2>All Proposals</h2>
+    <h2>All Proposals (sorted by date)</h2>
     {% for p in proposals %}
-    <div class="queue-item">
-        <div>
-            <a href="{{ url_for('review', proposal_id=p.proposal_id) }}">{{ p.tx_id }}</a>
-            <span style="color:var(--muted);margin-left:0.5rem;">{{ p.suggested_description[:50] }}</span>
+    <div class="queue-item" style="flex-direction:column;align-items:stretch;gap:0.25rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <a href="{{ url_for('review', proposal_id=p.proposal_id) }}">
+                    {% if p.tx_date %}{{ p.tx_date.strftime('%d/%m/%Y') }}{% endif %}
+                    &mdash;
+                    {% if p.tx_amount is not none %}&pound;{{ p.tx_amount }}{% endif %}
+                </a>
+                <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ p.original_description[:60] }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+                {% if p.tx_id in decided_ids %}
+                <span class="status-decided">Decided</span>
+                {% else %}
+                <span class="status-pending">Pending</span>
+                {% endif %}
+                <span class="badge badge-info">{{ (p.confidence * 100)|int }}%</span>
+            </div>
         </div>
-        <div>
-            {% if p.tx_id in decided_ids %}
-            <span class="status-decided">Decided</span>
-            {% else %}
-            <span class="status-pending">Pending</span>
-            {% endif %}
-            <span class="badge badge-info" style="margin-left:0.5rem;">{{ (p.confidence * 100)|int }}%</span>
+        {% if p.original_splits %}
+        <div style="font-size:0.8rem;color:var(--muted);">
+            Splits: {% for s in p.original_splits %}{{ s.account_path }} &pound;{{ s.amount }}{% if s.memo %} <em>({{ s.memo }})</em>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
         </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

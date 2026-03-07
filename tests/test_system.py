@@ -538,8 +538,11 @@ class TestSystemWebApp:
 
         resp = client.get("/queue")
         assert resp.status_code == 200
-        assert b"tx_cand_tesco" in resp.data
-        assert b"tx_cand_netflix" in resp.data
+        html = resp.data.decode()
+        assert "15/03/2023" in html
+        assert "01/03/2023" in html
+        assert "Card Payment" in html
+        assert "Direct Debit" in html
 
     def test_webapp_decide_approve(self, system_env: dict[str, Path]) -> None:
         self._run_pipeline(system_env)

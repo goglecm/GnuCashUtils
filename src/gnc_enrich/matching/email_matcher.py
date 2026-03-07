@@ -30,7 +30,12 @@ class EmailMatcher:
         self._tolerance = amount_tolerance
 
     def match(self, tx: Transaction) -> list[EmailEvidence]:
-        """Return email evidence ranked by relevance for the given transaction."""
+        """Return email evidence ranked by relevance for the given transaction.
+
+        Only emails that have at least one parsed amount matching within
+        tolerance are returned.  Date window is used as a pre-filter,
+        not as a standalone matching signal.
+        """
         date_from = tx.posted_date - timedelta(days=self._window)
         date_to = tx.posted_date + timedelta(days=self._window)
 
@@ -46,7 +51,9 @@ class EmailMatcher:
         desc_tokens = set(tx.description.lower().split())
 
         for ev in candidates:
-            score = self._score(tx, ev, desc_tokens)
+            has_amount, score = self._score(tx, ev, desc_tokens)
+            if not has_amount:
+                continue
             ev_copy = EmailEvidence(
                 evidence_id=ev.evidence_id,
                 message_id=ev.message_id,
@@ -68,13 +75,19 @@ class EmailMatcher:
         tx: Transaction,
         ev: EmailEvidence,
         desc_tokens: set[str],
-    ) -> float:
-        """Compute a weighted relevance score for one email against a transaction."""
+    ) -> tuple[bool, float]:
+        """Compute a weighted relevance score for one email against a transaction.
+
+        Returns ``(has_amount_match, score)`` so the caller can drop
+        emails that lack any amount overlap.
+        """
         score = 0.0
+        has_amount = False
 
         tol = Decimal(str(self._tolerance))
         for ea in ev.parsed_amounts:
             if abs(ea - tx.amount) <= tol:
+                has_amount = True
                 score += _WEIGHT_AMOUNT
                 break
 
@@ -88,4 +101,4 @@ class EmailMatcher:
         matched = sum(1 for t in desc_tokens if len(t) > 2 and t in ev_text)
         score += matched * _WEIGHT_TEXT_TOKEN
 
-        return score
+        return has_amount, score

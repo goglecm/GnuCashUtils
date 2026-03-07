@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from gnc_enrich.email.parser import EmlParser
+from gnc_enrich.email.parser import EmlParser, _extract_amounts, _filter_body, _strip_html
 from gnc_enrich.email.index import EmailIndexRepository
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "emails"
@@ -55,6 +55,52 @@ class TestEmlParser:
         parser = EmlParser()
         ev = parser.parse(FIXTURES_DIR / "order_confirm.eml")
         assert len(ev.evidence_id) == 16
+
+    def test_full_body_preserved(self) -> None:
+        parser = EmlParser()
+        ev = parser.parse(FIXTURES_DIR / "order_confirm.eml")
+        assert len(ev.full_body) > 0
+
+
+class TestBodyFiltering:
+    """Verify that HTML, signatures, and quoted replies are cleaned."""
+
+    def test_strip_html_tags(self) -> None:
+        assert _strip_html("<p>Hello</p>") == "Hello"
+        assert _strip_html("<b>Bold</b> text") == "Bold text"
+
+    def test_strip_html_collapses_whitespace(self) -> None:
+        assert _strip_html("<div>  A   B  </div>") == "A B"
+
+    def test_filter_body_removes_signature(self) -> None:
+        body = "Hello\nThis is a message.\n--\nJohn Doe\njohn@example.com"
+        filtered = _filter_body(body)
+        assert "John Doe" not in filtered
+        assert "Hello" in filtered
+
+    def test_filter_body_removes_sent_from(self) -> None:
+        body = "Check this out.\nSent from my iPhone\nMore text"
+        filtered = _filter_body(body)
+        assert "iPhone" not in filtered
+        assert "Check this out" in filtered
+
+    def test_filter_body_removes_quoted_replies(self) -> None:
+        body = "My reply.\n> Original message here\n> Another quoted line"
+        filtered = _filter_body(body)
+        assert "Original message" not in filtered
+        assert "My reply" in filtered
+
+    def test_amounts_from_signature_excluded(self) -> None:
+        text = "You paid £50.00.\n--\nCompany Ltd, registered capital £1,000,000"
+        filtered = _filter_body(text)
+        amounts = _extract_amounts(f"Subject {filtered}")
+        assert Decimal("50.00") in amounts
+        assert Decimal("1000000") not in amounts
+
+    def test_extract_amounts_comma_formatting(self) -> None:
+        assert _extract_amounts("£1,400.00") == [Decimal("1400.00")]
+        assert _extract_amounts("£1,400") == [Decimal("1400")]
+        assert _extract_amounts("GBP 1,234.56") == [Decimal("1234.56")]
 
 
 class TestEmailIndexRepository:

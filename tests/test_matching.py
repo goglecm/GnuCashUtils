@@ -118,6 +118,55 @@ class TestEmailMatcher:
             netflix_results = [r for r in results if "netflix" in r.sender.lower()]
             assert len(netflix_results) >= 1
 
+    def test_no_amount_emails_excluded(self, tmp_path: Path) -> None:
+        """Emails with no parsed GBP amounts must not appear in match results."""
+        index = self._build_index(tmp_path)
+        matcher = EmailMatcher(index, date_window_days=365, amount_tolerance=9999.0)
+        tx = _make_tx(amount="100.00", posted=date(2025, 1, 15))
+        results = matcher.match(tx)
+        for r in results:
+            assert len(r.parsed_amounts) > 0, (
+                f"Email {r.sender!r}/{r.subject!r} has no amounts but was returned"
+            )
+
+    def test_tolerance_zero_exact_match(self, tmp_path: Path) -> None:
+        """tolerance=0 matches only emails whose amount equals the tx amount exactly."""
+        index = self._build_index(tmp_path)
+        matcher = EmailMatcher(index, date_window_days=365, amount_tolerance=0.0)
+        tx = _make_tx(amount="25.00", posted=date(2025, 1, 15))
+        results = matcher.match(tx)
+        for r in results:
+            assert any(a == tx.amount for a in r.parsed_amounts), (
+                f"Email amounts {r.parsed_amounts} don't exactly match {tx.amount}"
+            )
+
+    def test_tolerance_zero_format_variants(self) -> None:
+        """Decimal('1400') == Decimal('1400.00') so tolerance=0 handles formatting."""
+        from decimal import Decimal as D
+        tol = D("0")
+        variants = [D("1400"), D("1400.0"), D("1400.00")]
+        target = D("1400.00")
+        for v in variants:
+            assert abs(v - target) <= tol, f"{v} should match {target} at tolerance 0"
+
+    def test_tolerance_zero_rejects_near_miss(self) -> None:
+        """tolerance=0 must reject £25.01 when tx is £25.00."""
+        index = EmailIndexRepository()
+        index._entries = [
+            _make_email("e1", amounts=["25.01"], sent_at=datetime(2025, 1, 15, tzinfo=timezone.utc)),
+        ]
+        matcher = EmailMatcher(index, date_window_days=7, amount_tolerance=0.0)
+        tx = _make_tx(amount="25.00", posted=date(2025, 1, 15))
+        results = matcher.match(tx)
+        assert len(results) == 0
+
+    def test_tolerance_zero_comma_formatted_amount(self) -> None:
+        """Amounts parsed from '£1,400.00' should match tx of £1400.00 at tolerance 0."""
+        from gnc_enrich.email.parser import _extract_amounts
+        amounts = _extract_amounts("You paid £1,400.00")
+        assert len(amounts) == 1
+        assert amounts[0] == Decimal("1400.00")
+
 
 # -- Receipt matcher ----------------------------------------------------------
 

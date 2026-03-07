@@ -7,6 +7,8 @@ import os
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from datetime import date
+
 from flask import Flask, redirect, render_template, request, url_for
 
 from gnc_enrich.config import ReviewConfig
@@ -87,6 +89,7 @@ def create_app(service: ReviewQueueService) -> Flask:
     @app.route("/queue")
     def queue():
         proposals = service.all_proposals()
+        proposals.sort(key=lambda p: p.tx_date or date.min)
         return render_template(
             "queue.html",
             proposals=proposals,

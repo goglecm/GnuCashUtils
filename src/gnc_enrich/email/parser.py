@@ -25,6 +25,11 @@ _GBP_AMOUNT_RE = re.compile(
 
 _MAX_BODY_SNIPPET = 500
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_WHITESPACE_RUN_RE = re.compile(r"[ \t]{2,}")
+
+_SIGNATURE_MARKERS = {"--", "___", "---", "Sent from", "Get Outlook"}
+
 
 def _extract_amounts(text: str) -> list[Decimal]:
     """Extract GBP amounts from text using regex."""
@@ -39,6 +44,26 @@ def _extract_amounts(text: str) -> list[Decimal]:
     return amounts
 
 
+def _strip_html(text: str) -> str:
+    """Remove HTML tags and collapse whitespace."""
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = _WHITESPACE_RUN_RE.sub(" ", text)
+    return text.strip()
+
+
+def _filter_body(body_text: str) -> str:
+    """Strip signatures, quoted replies, and boilerplate from an email body."""
+    lines: list[str] = []
+    for line in body_text.splitlines():
+        stripped = line.strip()
+        if any(stripped.startswith(m) for m in _SIGNATURE_MARKERS):
+            break
+        if stripped.startswith(">"):
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _get_body_text(msg: email.message.EmailMessage) -> str:
     """Extract the plain-text body from an email message."""
     body = msg.get_body(preferencelist=("plain", "html"))
@@ -47,7 +72,7 @@ def _get_body_text(msg: email.message.EmailMessage) -> str:
     content = body.get_content()
     if isinstance(content, bytes):
         content = content.decode("utf-8", errors="replace")
-    return content
+    return _strip_html(content)
 
 
 class EmlParser:
@@ -71,8 +96,9 @@ class EmlParser:
         body_text = _get_body_text(msg)
         body_snippet = body_text[:_MAX_BODY_SNIPPET]
 
-        combined_text = f"{subject} {body_text}"
-        parsed_amounts = _extract_amounts(combined_text)
+        filtered_body = _filter_body(body_text)
+        amount_source = f"{subject} {filtered_body}"
+        parsed_amounts = _extract_amounts(amount_source)
 
         evidence_id = hashlib.sha256(
             (message_id or str(eml_path)).encode()

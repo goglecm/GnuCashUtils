@@ -2,50 +2,92 @@
 {% block title %}Review: {{ proposal.tx_id }}{% endblock %}
 {% block content %}
 
+{# ── Before / After comparison ── #}
 <div class="card">
-    <h2>Transaction Details</h2>
-    <div class="field"><label>Transaction ID</label><div class="value">{{ proposal.tx_id }}</div></div>
-    <div class="field"><label>Current Description</label><div class="value">{{ proposal.suggested_description }}</div></div>
-    <div class="field">
-        <label>Confidence</label>
-        <div class="value">
-            {% set conf_pct = (proposal.confidence * 100)|int %}
-            <span class="confidence {% if proposal.confidence >= 0.7 %}high{% elif proposal.confidence >= 0.4 %}medium{% else %}low{% endif %}">
-                {{ conf_pct }}%
-            </span>
+    <h2>Transaction &mdash; Before &amp; After</h2>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        {# BEFORE #}
+        <div style="background:var(--bg);border-radius:6px;padding:0.75rem;">
+            <div style="font-weight:700;margin-bottom:0.5rem;color:var(--muted);font-size:0.85rem;">ORIGINAL</div>
+            <div class="field">
+                <label>Date</label>
+                <div class="value">{{ proposal.tx_date.strftime('%d/%m/%Y') if proposal.tx_date else '—' }}</div>
+            </div>
+            <div class="field">
+                <label>Amount</label>
+                <div class="value amount">{% if proposal.tx_amount is not none %}&pound;{{ proposal.tx_amount }}{% else %}&mdash;{% endif %}</div>
+            </div>
+            <div class="field">
+                <label>Description</label>
+                <div class="value">{{ proposal.original_description or '—' }}</div>
+            </div>
+            {% if proposal.original_splits %}
+            <div class="field">
+                <label>Splits</label>
+                {% for s in proposal.original_splits %}
+                <div style="font-size:0.9rem;">
+                    {{ s.account_path }} <span class="amount">&pound;{{ s.amount }}</span>
+                    {% if s.memo %}<span style="color:var(--muted);font-size:0.8rem;"> memo: {{ s.memo }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        {# AFTER (proposed) #}
+        <div style="background:#f0faf0;border-radius:6px;padding:0.75rem;">
+            <div style="font-weight:700;margin-bottom:0.5rem;color:var(--success);font-size:0.85rem;">PROPOSED</div>
+            <div class="field">
+                <label>Description</label>
+                <div class="value">{{ proposal.suggested_description }}</div>
+            </div>
+            <div class="field">
+                <label>Splits</label>
+                {% for s in proposal.suggested_splits %}
+                <div style="font-size:0.9rem;">
+                    {{ s.account_path }} <span class="amount">&pound;{{ s.amount }}</span>
+                    {% if s.memo %}<span style="color:var(--muted);font-size:0.8rem;"> memo: {{ s.memo }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="field">
+                <label>Confidence</label>
+                <div class="value">
+                    {% set conf_pct = (proposal.confidence * 100)|int %}
+                    <span class="confidence {% if proposal.confidence >= 0.7 %}high{% elif proposal.confidence >= 0.4 %}medium{% else %}low{% endif %}">
+                        {{ conf_pct }}%
+                    </span>
+                </div>
+            </div>
+            <div class="field"><label>Rationale</label><div class="value" style="font-size:0.85rem;">{{ proposal.rationale }}</div></div>
         </div>
     </div>
-    <div class="field"><label>Rationale</label><div class="value">{{ proposal.rationale }}</div></div>
 </div>
 
-<div class="card">
-    <h2>Suggested Splits</h2>
-    {% for split in proposal.suggested_splits %}
-    <div class="field">
-        <span>{{ split.account_path }}</span>
-        <span class="amount" style="float:right">&pound;{{ split.amount }}</span>
-    </div>
-    {% endfor %}
-</div>
-
+{# ── Email evidence ── #}
 {% if proposal.evidence %}
 {% if proposal.evidence.emails %}
 <div class="card">
-    <h2>Matched Emails ({{ proposal.evidence.emails|length }})</h2>
-    <p style="color:var(--muted);font-size:0.85rem;">Check the emails that correspond to this transaction. Approved emails will enrich the description.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:0.5rem;margin-bottom:0.75rem;">
+        <h2 style="border:none;margin:0;padding:0;">Matched Emails ({{ proposal.evidence.emails|length }})</h2>
+        {% if not decided %}
+        <button type="button" id="toggle-emails" class="btn" style="background:var(--primary);color:white;padding:0.35rem 0.75rem;font-size:0.8rem;">Deselect All</button>
+        {% endif %}
+    </div>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0.5rem;">Check the emails that correspond to this transaction. Approved emails will enrich the description.</p>
     {% for em in proposal.evidence.emails %}
     <div class="evidence-item" style="display:flex;gap:0.75rem;align-items:flex-start;">
-        <input type="checkbox" name="approved_email" value="{{ em.evidence_id }}" form="decision-form" style="margin-top:0.25rem;" {% if not decided %}checked{% endif %}>
+        <input type="checkbox" class="email-check" name="approved_email" value="{{ em.evidence_id }}" form="decision-form" style="margin-top:0.25rem;" {% if not decided %}checked{% endif %}>
         <div style="flex:1;">
             <span class="score">Score: {{ "%.1f"|format(em.relevance_score) }}</span>
             <div class="sender">{{ em.sender }}</div>
-            <div>{{ em.subject }}</div>
-            <div style="color:var(--muted);font-size:0.85rem;">{{ em.sent_at.strftime('%d/%m/%Y %H:%M') if em.sent_at else '' }}</div>
+            <div style="font-weight:600;">{{ em.subject }}</div>
             {% if em.parsed_amounts %}
-            <div style="font-size:0.85rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+            <div style="font-size:0.85rem;margin-top:0.25rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
             {% endif %}
             {% if em.body_snippet %}
-            <div style="font-size:0.85rem;color:var(--muted);margin-top:0.25rem;">{{ em.body_snippet[:200] }}</div>
+            <div style="font-size:0.85rem;color:var(--muted);margin-top:0.25rem;white-space:pre-wrap;">{{ em.body_snippet[:300] }}</div>
             {% endif %}
         </div>
     </div>
@@ -53,6 +95,7 @@
 </div>
 {% endif %}
 
+{# ── Receipt evidence ── #}
 {% if proposal.evidence.receipt %}
 <div class="card">
     <h2>Matched Receipt</h2>
@@ -75,6 +118,7 @@
 {% endif %}
 {% endif %}
 
+{# ── Decision form ── #}
 {% if not decided %}
 <div class="card">
     <h2>Your Decision</h2>
@@ -111,5 +155,18 @@
     <p style="color:var(--success);font-weight:600;">This transaction has already been decided.</p>
 </div>
 {% endif %}
+
+<script>
+(function() {
+    var btn = document.getElementById('toggle-emails');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+        var boxes = document.querySelectorAll('.email-check');
+        var allChecked = Array.prototype.every.call(boxes, function(b) { return b.checked; });
+        boxes.forEach(function(b) { b.checked = !allChecked; });
+        btn.textContent = allChecked ? 'Select All' : 'Deselect All';
+    });
+})();
+</script>
 
 {% endblock %}

@@ -1,5 +1,6 @@
 """Tests for ReviewQueueService and Flask review web app."""
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,18 +20,30 @@ def _seed_proposals(state: StateRepository) -> list[Proposal]:
             suggested_description="Tesco 15/01/2025",
             suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
             confidence=0.85, rationale="ML match",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO STORES", original_splits=[
+                Split(account_path="Imbalance-GBP", amount=Decimal("25.00")),
+            ],
         ),
         Proposal(
             proposal_id="p2", tx_id="tx2",
             suggested_description="Netflix 20/01/2025",
             suggested_splits=[Split(account_path="Expenses:Entertainment", amount=Decimal("15.99"))],
             confidence=0.7, rationale="Keyword match",
+            tx_date=date(2025, 1, 20), tx_amount=Decimal("15.99"),
+            original_description="NETFLIX.COM", original_splits=[
+                Split(account_path="Imbalance-GBP", amount=Decimal("15.99")),
+            ],
         ),
         Proposal(
             proposal_id="p3", tx_id="tx3",
             suggested_description="Unknown 25/01/2025",
             suggested_splits=[Split(account_path="Expenses:Miscellaneous", amount=Decimal("42.00"))],
             confidence=0.3, rationale="Low confidence",
+            tx_date=date(2025, 1, 25), tx_amount=Decimal("42.00"),
+            original_description="UNKNOWN MERCHANT", original_splits=[
+                Split(account_path="Unspecified", amount=Decimal("42.00")),
+            ],
         ),
     ]
     state.save_proposals(proposals)
@@ -192,9 +205,11 @@ class TestReviewWebApp:
         resp = client.get("/queue")
         assert resp.status_code == 200
         html = resp.data.decode()
-        assert "tx1" in html
-        assert "tx2" in html
-        assert "tx3" in html
+        assert "15/01/2025" in html
+        assert "20/01/2025" in html
+        assert "25/01/2025" in html
+        assert "TESCO STORES" in html
+        assert "NETFLIX.COM" in html
 
     def test_nonexistent_proposal_redirects(self, client) -> None:
         resp = client.get("/review/nonexistent", follow_redirects=False)

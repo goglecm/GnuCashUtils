@@ -116,7 +116,12 @@ class EmailIndexRepository:
         date_to: date | None = None,
         limit: int = 20,
     ) -> list[EmailEvidence]:
-        """Search the in-memory index by text tokens, amount, and date range."""
+        """Search the in-memory index by text tokens, amount, and date range.
+
+        When *amount* is provided, only emails containing at least one
+        parsed amount within *amount_tolerance* of the target are returned.
+        Date range is applied as a hard filter.
+        """
         results: list[tuple[float, EmailEvidence]] = []
         query_tokens = set(query_text.lower().split()) if query_text else set()
 
@@ -131,12 +136,16 @@ class EmailIndexRepository:
                     continue
                 score += 1.0
 
+            amount_hit = False
             if amount is not None:
                 tol = Decimal(str(amount_tolerance))
                 for ea in ev.parsed_amounts:
                     if abs(ea - amount) <= tol:
+                        amount_hit = True
                         score += 5.0
                         break
+                if not amount_hit:
+                    continue
 
             if query_tokens:
                 searchable = f"{ev.sender} {ev.subject} {ev.body_snippet}".lower()
