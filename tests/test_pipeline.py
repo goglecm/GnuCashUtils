@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from gnc_enrich.config import RunConfig
-from gnc_enrich.services.pipeline import EnrichmentPipeline
+from gnc_enrich.services.pipeline import EnrichmentPipeline, _test_llm_connection
 from gnc_enrich.state.repository import StateRepository
 from tests.conftest import SAMPLE_GNUCASH_XML
 
@@ -43,6 +43,19 @@ def _make_config(dirs: dict[str, Path]) -> RunConfig:
         processed_receipts_dir=dirs["processed"],
         state_dir=dirs["state"],
     )
+
+
+def test_llm_connection_test_success() -> None:
+    """When the endpoint returns a valid chat completion, _test_llm_connection returns True."""
+    mock_resp = type("Res", (), {"raise_for_status": lambda self: None, "json": lambda self: {"choices": [{"message": {"content": "OK"}}]}})()
+    with patch("requests.post", return_value=mock_resp):
+        assert _test_llm_connection("http://localhost:11434/v1/chat/completions", "llama3", "") is True
+
+
+def test_llm_connection_test_missing_endpoint_returns_false() -> None:
+    """Missing endpoint or model returns False without making a request."""
+    assert _test_llm_connection("", "llama3", "") is False
+    assert _test_llm_connection("http://localhost:11434", "", "") is False
 
 
 def test_pipeline_generates_proposals(tmp_path: Path) -> None:

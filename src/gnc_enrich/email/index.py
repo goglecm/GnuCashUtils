@@ -107,6 +107,7 @@ class EmailIndexRepository:
             )
 
         new_count = 0
+        processed_count = 0
         eml_files = sorted(emails_dir.rglob("*.eml"))
         with index_path.open("a", encoding="utf-8") as idx_f:
             for eml_path in eml_files:
@@ -115,6 +116,9 @@ class EmailIndexRepository:
                     continue
                 try:
                     ev = self._parser.parse(eml_path)
+                    processed_count += 1
+                    if processed_count % 5000 == 0:
+                        logger.info("Processed %d emails", processed_count)
                     ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
                     if min_date is not None and ev_date < min_date:
                         idx_f.write(json.dumps(_serialize_evidence(ev)) + "\n")

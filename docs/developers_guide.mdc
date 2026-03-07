@@ -61,7 +61,7 @@ src/gnc_enrich/          # Main package
   apply/engine.py        # Apply, backup, rollback, audit
   state/repository.py    # JSON/JSONL state persistence
   services/pipeline.py   # High-level orchestration
-tests/                   # Test suite (293 tests)
+tests/                   # Test suite (296 tests)
   conftest.py            # Shared fixtures (sample GnuCash XML)
   fixtures/emails/       # 13 synthetic .eml files in subdirectories
 ```
@@ -137,13 +137,17 @@ python -m gnc_enrich run --llm-mode offline --llm-endpoint http://localhost:1143
 
 # Remote LLM (e.g., OpenAI-compatible API)
 python -m gnc_enrich run --llm-mode online --llm-endpoint https://api.example.com/v1/chat/completions --llm-model gpt-4 ...
+
+# Local LLM with web search (inject DuckDuckGo results into the prompt for category suggestions)
+pip install duckduckgo-search   # or: pip install -e ".[web]"
+python -m gnc_enrich run --llm-mode offline --llm-endpoint http://localhost:11434/v1/chat/completions --llm-model llama3 --llm-use-web ...
 ```
 
 LLM is used in two places:
 1. **Receipt OCR fallback**: When Tesseract fails to extract a total, the LLM attempts structured extraction.
 2. **Category rationale**: When ML classifier confidence is below 60%, the LLM provides an alternative suggestion.
 
-At pipeline start, INFO logs indicate how the LLM was loaded: `LLM enabled: mode=... endpoint=... model=...` when enabled, or `LLM disabled; using ML/heuristics and OCR only` when disabled. Use these to confirm the correct endpoint and model are in use.
+At pipeline start, INFO logs indicate how the LLM was loaded: `LLM enabled: mode=... endpoint=... model=...` when enabled, or `LLM disabled; using ML/heuristics and OCR only` when disabled. When enabled, a **connection test** runs (a minimal chat completion request); you will see `LLM connection OK` or a warning if it failed. During email indexing, progress is logged every **5000 processed emails**.
 
 ## Troubleshooting
 

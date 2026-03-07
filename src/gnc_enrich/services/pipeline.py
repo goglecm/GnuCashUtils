@@ -21,6 +21,34 @@ from gnc_enrich.state.repository import StateRepository
 logger = logging.getLogger(__name__)
 
 
+def _test_llm_connection(endpoint: str, model_name: str, api_key: str) -> bool:
+    """Send a minimal chat completion request to verify the LLM endpoint works. Returns True if OK."""
+    if not endpoint or not model_name:
+        logger.warning("LLM endpoint or model missing; skipping connection test")
+        return False
+    try:
+        import requests
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "Reply with the word OK."}],
+            "max_tokens": 10,
+        }
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        resp = requests.post(endpoint, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if "choices" in data and len(data["choices"]) > 0:
+            logger.info("LLM connection OK (endpoint responded successfully)")
+            return True
+        logger.warning("LLM connection test: unexpected response shape")
+        return False
+    except Exception as e:
+        logger.warning("LLM connection failed: %s", e, exc_info=True)
+        return False
+
+
 @dataclass(slots=True)
 class PipelineResult:
     """Summary of a pipeline run."""
@@ -39,6 +67,10 @@ class EnrichmentPipeline:
                 config.llm.endpoint or "(none)",
                 config.llm.model_name or "(none)",
             )
+            if not _test_llm_connection(
+                config.llm.endpoint, config.llm.model_name, config.llm.api_key
+            ):
+                logger.warning("LLM connection test failed; pipeline will continue but LLM calls may fail")
         else:
             logger.info("LLM disabled; using ML/heuristics and OCR only")
         proposals = self.build_proposals(config)

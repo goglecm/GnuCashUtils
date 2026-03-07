@@ -1,6 +1,6 @@
 # Test Plan & Strategy (v1)
 
-## Status: Implemented — 293 tests passing
+## Status: Implemented — 296 tests passing
 
 ## Objectives
 - Provide immediate, repeatable confidence that all modules work correctly.
@@ -37,14 +37,14 @@
 | `test_receipt_pipeline.py` | 17 | `receipt/ocr`, `receipt/repository` |
 | `test_matching.py` | 22 | `matching/email_matcher` (incl. tolerance-zero, no-amount/empty-amount exclusion), `matching/receipt_matcher` |
 | `test_ml_predictor.py` | 15 | `ml/predictor` (CategoryPredictor, FeedbackTrainer) |
-| `test_pipeline.py` | 7 | `services/pipeline` (incl. email index min_date from earliest expense candidate) |
+| `test_pipeline.py` | 9 | `services/pipeline` (incl. LLM connection test, email index min_date from earliest expense candidate) |
 | `test_apply_engine.py` | 15 | `apply/engine` (dry-run, apply, journal, rollback, audit, receipt not moved on amount mismatch) |
 | `test_review.py` | 19 | `review/service`, `review/webapp` (Flask test client, before/after view, sort order, select-all, None tx_date) |
 | `test_integration.py` | 3 | Full cycle: run->review->apply, Flask flow, CLI dispatch |
-| `test_cli.py` | 4 | `cli` (parser, flags, LLM args) |
+| `test_cli.py` | 4 | `cli` (parser, flags, LLM args); `test_cli_flags.py` covers `--llm-use-web` |
 | `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
 | `test_system.py` | 17 | Full system tests: pipeline with multi-subdir emails, review cycle, apply+rollback, Flask webapp |
-| `test_cli_flags.py` | 36 | Every CLI flag: verbose, run/review/apply flags, dispatch integration tests |
+| `test_cli_flags.py` | 37 | Every CLI flag: verbose, run/review/apply flags, --llm-use-web, dispatch integration tests |
 | `test_system_scenarios.py` | 11 | Scenarios: imbalance-only, zero candidates, date window, multiple receipts, nested emails, empty book, realistic format |
 
 ## Spec coverage (key requirements)

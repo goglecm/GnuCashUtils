@@ -30,6 +30,7 @@ where = ["src"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+web = ["duckduckgo-search"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

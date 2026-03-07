@@ -45,6 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--llm-endpoint", default="")
     run.add_argument("--llm-model", default="")
+    run.add_argument(
+        "--llm-use-web",
+        action="store_true",
+        help="When using a local LLM, run web searches and inject results into the prompt for better category suggestions",
+    )
 
     review = sub.add_parser("review", help="Run local web review app")
     review.add_argument("--state-dir", type=Path, required=True)
@@ -83,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             mode=LlmMode(args.llm_mode),
             endpoint=args.llm_endpoint,
             model_name=args.llm_model,
+            use_web=getattr(args, "llm_use_web", False),
         )
         config = RunConfig(
             gnucash_path=args.gnucash_path,

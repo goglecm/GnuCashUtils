@@ -25,6 +25,7 @@ class LlmConfig:
     api_key: str = ""
     temperature: float = 0.2
     max_tokens: int = 1024
+    use_web: bool = False
 
 
 @dataclass(slots=True)

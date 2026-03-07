@@ -224,6 +224,12 @@ class TestRunFlags:
         assert ns.llm_endpoint == "http://localhost:11434/v1/chat/completions"
         assert ns.llm_model == "mistral"
 
+    def test_llm_use_web_flag(self, cli_env: dict[str, Path]) -> None:
+        ns = build_parser().parse_args(_run_args(cli_env, [
+            "--llm-use-web",
+        ]))
+        assert getattr(ns, "llm_use_web", False) is True
+
     def test_run_missing_required_arg_fails(self) -> None:
         with pytest.raises(SystemExit):
             build_parser().parse_args(["run", "--gnucash-path", "/tmp/x"])

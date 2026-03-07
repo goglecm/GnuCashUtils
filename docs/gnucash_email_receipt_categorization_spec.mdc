@@ -98,6 +98,8 @@ User-configurable parameters must include at least:
   - offline/local model
   - online model endpoint (with optional API key for `Authorization: Bearer` header)
   - disabled
+- Optional **use_web**: when using a local/offline LLM, run web searches (e.g. DuckDuckGo) and inject snippets into the LLM prompt for category suggestions (requires optional dependency `duckduckgo-search`).
+- When LLM is enabled, the pipeline runs a **connection test** at start (minimal chat completion request); INFO logs report "LLM connection OK" or a warning if the endpoint is unreachable.
 - LLM configuration (mode, endpoint, model name) is persisted in `run_config.json` and automatically loaded during the review phase, so the user need not re-specify it.
 
 ---
@@ -126,7 +128,7 @@ User-configurable parameters must include at least:
    - Parse `.eml` metadata and body (plain text preferred over HTML; HTML tags stripped and entities decoded).
    - Filter body: remove signature blocks (RFC 3676 `-- `, `---`, `___`, `Sent from`, `Get Outlook`) and quoted replies (`>` prefixed lines).
    - Extract GBP amounts from subject + filtered body using `£`/`GBP` regex.
-   - Build JSONL index optimized for amount/date/merchant/entity retrieval.
+   - Build JSONL index optimized for amount/date/merchant/entity retrieval. During index build, progress is logged every 5000 processed emails.
 4. **Receipt Pipeline**
    - OCR receipts and detect line items/totals.
    - Match one receipt to one transaction.
@@ -136,7 +138,7 @@ User-configurable parameters must include at least:
    - Category prediction + confidence score + rationale snippets.
    - Description proposal in GB date style; merchant name extracted from email sender domain.
    - Keyword-based fallback (Food, Transport, Entertainment, Utilities) when insufficient training data (< 2 categorized transactions or < 2 categories). Default: `Expenses:Miscellaneous` at confidence 0.3.
-   - LLM consulted only when ML confidence < 0.6.
+   - LLM consulted only when ML confidence < 0.6. When **use_web** is set, web search results (e.g. DuckDuckGo) are injected into the LLM prompt for category suggestions.
    - Evidence-driven description enrichment joins base, email detail, and receipt detail with ` | ` separator.
 7. **Review Web App**
    - One transaction at a time review via routes: `/` (auto-redirect to next pending or done page), `/queue` (full queue sorted by date), `/review/<id>` (individual review).
@@ -313,6 +315,7 @@ Notes:
 - After `pip install`, the `gnc-enrich` console script is available (equivalent to `python -m gnc_enrich`).
 - `--create-backup` (default: true) and `--in-place` (default: true) can be negated with `--no-backup` and `--no-in-place`.
 - If `--emails-dir` or `--receipts-dir` does not exist, the system logs a message and continues without that evidence source.
+- `--llm-use-web`: when using a local LLM (`--llm-mode offline`), run web searches and inject results into the prompt for category suggestions (optional; requires `pip install duckduckgo-search` or `pip install -e ".[web]"`).
 
 ---
 

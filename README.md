@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 293 tests passing.
+> Status: **v1 Implemented** — all modules complete, 296 tests passing.
 
 ## What this project does
 
@@ -85,6 +85,7 @@ Arguments:
 - `--llm-mode` (`disabled`|`offline`|`online`): LLM integration mode.
 - `--llm-endpoint`: LLM API endpoint URL.
 - `--llm-model`: LLM model name.
+- `--llm-use-web`: When using a local LLM, run web searches and inject snippets into the prompt for better category suggestions (requires `pip install duckduckgo-search` or `pip install -e ".[web]"`).
 
 ### 2) `review` — launch local review application
 
@@ -232,8 +233,10 @@ LLM is used for:
 2. **Category rationale** when ML classifier confidence is below 60%.
 
 When you run the pipeline, INFO logs confirm how the LLM was loaded:
-- **LLM enabled**: you will see `LLM enabled: mode=offline endpoint=http://... model=llama3` (or your endpoint/model). Use this to verify the correct endpoint and model are in use.
+- **LLM enabled**: you will see `LLM enabled: mode=offline endpoint=http://... model=llama3` (or your endpoint/model). The pipeline then **tests the connection** with a minimal request; you will see `LLM connection OK` if the endpoint responds, or a warning if it fails (the run continues but LLM calls may fail later).
 - **LLM disabled**: you will see `LLM disabled; using ML/heuristics and OCR only`.
+
+During email indexing, the pipeline logs progress every **5000 processed emails** (e.g. `Processed 5000 emails`, `Processed 10000 emails`).
 
 ---
 

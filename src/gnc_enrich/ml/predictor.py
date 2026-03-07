@@ -372,6 +372,31 @@ class CategoryPredictor:
 
         return terse_names
 
+    def _web_search_snippets(self, query: str, max_results: int = 5) -> str:
+        """Run a web search and return a short text block to inject into the LLM prompt. Empty if disabled or failed."""
+        if not getattr(self._llm_config, "use_web", False):
+            return ""
+        try:
+            from duckduckgo_search import DDGS
+
+            results = list(DDGS().text(query, max_results=max_results))
+            if not results:
+                return ""
+            parts = []
+            for r in results:
+                title = r.get("title", "")
+                body = (r.get("body") or "")[:200]
+                parts.append(f"- {title}: {body}")
+            return "\n\nWeb search context:\n" + "\n".join(parts)
+        except ImportError:
+            logger.warning(
+                "LLM use_web is set but duckduckgo-search is not installed; pip install duckduckgo-search"
+            )
+            return ""
+        except Exception as e:
+            logger.debug("Web search failed: %s", e)
+            return ""
+
     def _query_llm(
         self,
         tx: Transaction,
@@ -388,6 +413,10 @@ class CategoryPredictor:
                 evidence_text += f"\nTop email from: {emails[0].sender}, subject: {emails[0].subject}"
             if receipt:
                 evidence_text += f"\nReceipt text excerpt: {receipt.ocr_text[:200]}"
+
+            web_context = self._web_search_snippets(tx.description or "expense category")
+            if web_context:
+                evidence_text += web_context
 
             payload = {
                 "model": self._llm_config.model_name,
