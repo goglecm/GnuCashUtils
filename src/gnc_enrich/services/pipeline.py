@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
-from gnc_enrich.config import RunConfig
+from gnc_enrich.config import LlmMode, RunConfig
 from gnc_enrich.domain.models import Proposal, ReceiptEvidence
 from gnc_enrich.email.index import EmailIndexRepository
 from gnc_enrich.gnucash.loader import GnuCashLoader
@@ -32,6 +32,15 @@ class EnrichmentPipeline:
     """Coordinates loading, matching, inference, and proposal persistence."""
 
     def run(self, config: RunConfig) -> PipelineResult:
+        if config.llm.mode != LlmMode.DISABLED:
+            logger.info(
+                "LLM enabled: mode=%s endpoint=%s model=%s",
+                config.llm.mode.value,
+                config.llm.endpoint or "(none)",
+                config.llm.model_name or "(none)",
+            )
+        else:
+            logger.info("LLM disabled; using ML/heuristics and OCR only")
         proposals = self.build_proposals(config)
 
         state = StateRepository(config.state_dir)
@@ -65,20 +74,19 @@ class EnrichmentPipeline:
             all_txs,
             include_skipped=config.include_skipped,
             skipped_ids=skipped_ids,
-            include_transfers=True,
         )
-        logger.info("Filtered to %d candidate transactions", len(candidates))
+        logger.info("Filtered to %d candidate transactions (Unspecified/Imbalance-GBP only)", len(candidates))
 
         min_email_date = None
         if candidates and config.emails_dir.exists():
-            earliest_tx_date = min(tx.posted_date for tx in candidates)
-            latest_tx_date = max(tx.posted_date for tx in candidates)
-            min_email_date = earliest_tx_date - timedelta(days=config.date_window_days)
+            earliest_candidate_date = min(tx.posted_date for tx in candidates)
+            latest_candidate_date = max(tx.posted_date for tx in candidates)
+            min_email_date = earliest_candidate_date - timedelta(days=config.date_window_days)
             logger.info(
-                "Indexing emails from %s onwards (candidate tx range %s to %s, window %d days before earliest)",
+                "Indexing emails from %s onwards (Unspecified/Imbalance-GBP tx range %s to %s, window %d days before earliest)",
                 min_email_date,
-                earliest_tx_date,
-                latest_tx_date,
+                earliest_candidate_date,
+                latest_candidate_date,
                 config.date_window_days,
             )
 
@@ -137,7 +145,7 @@ class EnrichmentPipeline:
                 matched_receipt.evidence_id if matched_receipt else "none",
             )
             proposal = predictor.propose(tx, matched_emails, matched_receipt)
-            proposal = dataclasses.replace(proposal, is_transfer=tx.is_transfer)
+            proposal = dataclasses.replace(proposal, is_transfer=getattr(tx, "is_unsettled_transfer", False))
             logger.debug(
                 "  Proposal: category=%s confidence=%.2f transfer=%s",
                 proposal.suggested_splits[0].account_path if proposal.suggested_splits else "?",

@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 291 tests passing.
+> Status: **v1 Implemented** — all modules complete, 293 tests passing.
 
 ## What this project does
 
@@ -230,6 +230,10 @@ python -m gnc_enrich run --llm-mode online \
 LLM is used for:
 1. **Receipt OCR fallback** when Tesseract fails to extract a total.
 2. **Category rationale** when ML classifier confidence is below 60%.
+
+When you run the pipeline, INFO logs confirm how the LLM was loaded:
+- **LLM enabled**: you will see `LLM enabled: mode=offline endpoint=http://... model=llama3` (or your endpoint/model). Use this to verify the correct endpoint and model are in use.
+- **LLM disabled**: you will see `LLM disabled; using ML/heuristics and OCR only`.
 
 ---
 
