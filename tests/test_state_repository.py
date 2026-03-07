@@ -1,6 +1,6 @@
 """Tests for JSON/JSONL state persistence."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from gnc_enrich.domain.models import (
@@ -39,6 +39,12 @@ def _sample_proposal(pid: str = "p1", tx_id: str = "tx1") -> Proposal:
                 )
             ],
         ),
+        tx_date=date(2025, 1, 1),
+        tx_amount=Decimal("15.00"),
+        original_description="Card Payment TESCO",
+        original_splits=[
+            Split(account_path="Imbalance-GBP", amount=Decimal("15.00"), memo="orig memo"),
+        ],
     )
 
 
@@ -83,6 +89,20 @@ def test_proposals_evidence_roundtrip(tmp_path) -> None:
     assert loaded.evidence is not None
     assert len(loaded.evidence.emails) == 1
     assert loaded.evidence.emails[0].sender == "tesco@example.com"
+
+
+def test_proposal_original_fields_roundtrip(tmp_path) -> None:
+    repo = StateRepository(tmp_path)
+    prop = _sample_proposal()
+    repo.save_proposals([prop])
+
+    loaded = repo.load_proposals()[0]
+    assert loaded.tx_date == date(2025, 1, 1)
+    assert loaded.tx_amount == Decimal("15.00")
+    assert loaded.original_description == "Card Payment TESCO"
+    assert len(loaded.original_splits) == 1
+    assert loaded.original_splits[0].account_path == "Imbalance-GBP"
+    assert loaded.original_splits[0].memo == "orig memo"
     assert loaded.evidence.emails[0].parsed_amounts == [Decimal("15.00")]
 
 

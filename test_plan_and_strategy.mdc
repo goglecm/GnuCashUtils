@@ -1,6 +1,6 @@
 # Test Plan & Strategy (v1)
 
-## Status: Implemented — 243 tests passing
+## Status: Implemented — 260 tests passing
 
 ## Objectives
 - Provide immediate, repeatable confidence that all modules work correctly.
@@ -31,15 +31,15 @@
 | Test File | Count | Modules Covered |
 |-----------|-------|-----------------|
 | `test_config_and_domain.py` | 12 | `config`, `domain/models` |
-| `test_state_repository.py` | 13 | `state/repository` |
+| `test_state_repository.py` | 14 | `state/repository` (incl. Proposal original fields roundtrip) |
 | `test_gnucash_loader.py` | 17 | `gnucash/loader` (load, filter, backup, write) |
-| `test_email_pipeline.py` | 17 | `email/parser`, `email/index` |
+| `test_email_pipeline.py` | 25 | `email/parser` (incl. body filtering), `email/index` |
 | `test_receipt_pipeline.py` | 17 | `receipt/ocr`, `receipt/repository` |
-| `test_matching.py` | 15 | `matching/email_matcher`, `matching/receipt_matcher` |
+| `test_matching.py` | 20 | `matching/email_matcher` (incl. tolerance-zero, no-amount exclusion), `matching/receipt_matcher` |
 | `test_ml_predictor.py` | 12 | `ml/predictor` (CategoryPredictor, FeedbackTrainer) |
 | `test_pipeline.py` | 6 | `services/pipeline` |
 | `test_apply_engine.py` | 11 | `apply/engine` (dry-run, apply, rollback, audit) |
-| `test_review.py` | 15 | `review/service`, `review/webapp` (Flask test client) |
+| `test_review.py` | 18 | `review/service`, `review/webapp` (Flask test client, before/after view, sort order, select-all) |
 | `test_integration.py` | 3 | Full cycle: run->review->apply, Flask flow, CLI dispatch |
 | `test_cli.py` | 4 | `cli` (parser, flags, LLM args) |
 | `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |

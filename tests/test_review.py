@@ -170,6 +170,21 @@ class TestReviewWebApp:
         assert "Tesco 15/01/2025" in html
         assert "85%" in html
 
+    def test_review_page_shows_before_after(self, client) -> None:
+        resp = client.get("/review/p1")
+        html = resp.data.decode()
+        assert "ORIGINAL" in html
+        assert "PROPOSED" in html
+        assert "TESCO STORES" in html
+        assert "Tesco 15/01/2025" in html
+        assert "Imbalance-GBP" in html
+        assert "Expenses:Food" in html
+
+    def test_review_page_has_select_all_button(self, client) -> None:
+        resp = client.get("/review/p1")
+        html = resp.data.decode()
+        assert "toggle-emails" in html or "Deselect All" in html or "Select All" in html
+
     def test_approve_decision(self, client) -> None:
         resp = client.post("/review/p1/decide", data={
             "action": "approve",
@@ -210,6 +225,14 @@ class TestReviewWebApp:
         assert "25/01/2025" in html
         assert "TESCO STORES" in html
         assert "NETFLIX.COM" in html
+
+    def test_queue_sorted_by_date(self, client) -> None:
+        resp = client.get("/queue")
+        html = resp.data.decode()
+        pos_jan15 = html.index("15/01/2025")
+        pos_jan20 = html.index("20/01/2025")
+        pos_jan25 = html.index("25/01/2025")
+        assert pos_jan15 < pos_jan20 < pos_jan25
 
     def test_nonexistent_proposal_redirects(self, client) -> None:
         resp = client.get("/review/nonexistent", follow_redirects=False)

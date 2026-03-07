@@ -2,7 +2,7 @@
 
 Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 243 tests passing.
+> Status: **v1 Implemented** — all modules complete, 260 tests passing.
 
 ## What this project does
 
@@ -168,7 +168,7 @@ python -m gnc_enrich apply --state-dir /finance/gnc-state --create-backup --back
 │   ├── apply/engine.py              # Apply, backup, rollback, audit
 │   ├── state/repository.py          # JSON/JSONL state persistence
 │   └── services/pipeline.py         # Pipeline orchestration
-└── tests/                           # 243 tests
+└── tests/                           # 260 tests
     ├── conftest.py                  # Shared fixtures
     └── fixtures/emails/             # 13 synthetic .eml files in subdirectories
 ```
@@ -196,7 +196,7 @@ The `--state-dir` directory contains:
 ## Running tests
 
 ```bash
-pytest              # all 243 tests
+pytest              # all 260 tests
 pytest -v           # verbose
 pytest -k matching  # keyword filter
 pytest tests/test_integration.py -v  # integration only

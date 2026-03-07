@@ -61,7 +61,7 @@ src/gnc_enrich/          # Main package
   apply/engine.py        # Apply, backup, rollback, audit
   state/repository.py    # JSON/JSONL state persistence
   services/pipeline.py   # High-level orchestration
-tests/                   # Test suite (243 tests)
+tests/                   # Test suite (260 tests)
   conftest.py            # Shared fixtures (sample GnuCash XML)
   fixtures/emails/       # 13 synthetic .eml files in subdirectories
 ```
@@ -83,9 +83,9 @@ When implementing a module/class:
 - `cli.py`: parser contracts, required args, flag defaults, command dispatch.
 - `config.py` and `domain/models.py`: dataclass defaults, type/shape invariants.
 - `gnucash/loader.py`: fixture-driven XML parse/write tests using `sample_gnucash_path` conftest fixture.
-- `email/*`: fixture-driven parse tests using `tests/fixtures/emails/` .eml files.
+- `email/*`: fixture-driven parse tests using `tests/fixtures/emails/` .eml files; body filtering tests (HTML stripping, signature/quote removal, amount extraction from cleaned body).
 - `receipt/*`: programmatically generated receipt images via Pillow.
-- `matching/*`: deterministic scoring/prediction tests with constructed evidence.
+- `matching/*`: deterministic scoring/prediction tests with constructed evidence; tolerance-zero exact matching; no-amount email exclusion.
 - `ml/predictor.py`: train on synthetic history, verify predictions + LLM path (mocked).
 - `review/*`: service unit tests + Flask test client for web routes.
 - `apply/engine.py`: dry-run, apply, backup, rollback, audit verification.

@@ -144,13 +144,14 @@ User-configurable parameters must include at least:
 ## 7.1 Email Matching
 - Use transaction date with configurable window (default ±7 days).
 - Recognize that bank posting may lag 1–4 days from purchase/authorization.
-- Match signals include:
-  - amount references (high priority)
+- **Amount match is required**: only emails whose body/subject contains a GBP amount within tolerance of the transaction amount are returned as matches. Date window is a pre-filter, not a standalone qualifying signal.
+- Amounts are extracted from the email subject and **filtered body only** (HTML tags stripped, email signatures and quoted replies removed before extraction).
+- Additional scoring signals (used for ranking, not qualifying):
   - sender domain/name
   - subject tokens
   - body tokens (merchant/order/keywords)
   - memo/description proximity
-- Allow user-configurable minor amount tolerance.
+- Allow user-configurable minor amount tolerance. At tolerance 0, amounts match exactly ignoring formatting (commas, trailing zeros, decimal point).
 - If multiple emails match one transaction, include **all** as evidence and rank by relevance.
 
 ## 7.2 Email Indexing
@@ -200,9 +201,11 @@ User-configurable parameters must include at least:
 - Exactly one transaction at a time.
 
 ## 9.2 Required Transaction View
-- Core transaction details (date, amount, account, current split/category).
+- **Before/after comparison**: original transaction details (date, amount, description, split accounts and memos) shown side-by-side with proposed changes (new description, new splits, confidence, rationale).
+- Queue view sorted by transaction date.
 - Evidence panel:
-  - matched emails (all candidates + relevance rank)
+  - matched emails (all candidates + relevance rank); displayed as sender, subject, and cleaned body text only (no raw headers/metadata)
+  - select/deselect all button for email checkboxes
   - matched receipt OCR summary + source image preview/path
   - similar historical transactions
   - model confidence and rationale
