@@ -238,4 +238,4 @@ LLM is used for:
 
 ## License
 
-No license file has been added yet.
+This project is licensed under the [GNU General Public License v3.0](LICENSE.md).
