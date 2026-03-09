@@ -252,6 +252,128 @@ class TestReceiptOcrEngineLlmFallback:
         assert updated.parsed_total is None
         assert updated.line_items == []
 
+    def test_llm_fallback_returns_evidence_when_client_disabled(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """LLM fallback returns original evidence when LlmClient.enabled is False (empty endpoint)."""
+        from gnc_enrich.config import LlmConfig, LlmMode
+        from gnc_enrich.domain.models import ReceiptEvidence
+
+        dummy_image = tmp_path / "blank.jpg"
+        _make_receipt_image(dummy_image, ["Unreadable"])
+
+        import gnc_enrich.receipt.ocr as ocr_mod
+
+        def fake_image_to_string(_img: Image.Image) -> str:
+            return "no totals"
+
+        monkeypatch.setattr(ocr_mod.pytesseract, "image_to_string", fake_image_to_string)
+
+        llm_cfg = LlmConfig(
+            mode=LlmMode.ONLINE,
+            endpoint="",
+            model_name="",
+        )
+        engine = ReceiptOcrEngine(llm_config=llm_cfg)
+        evidence = ReceiptEvidence(
+            evidence_id="e1",
+            source_path=str(dummy_image),
+            ocr_text="no totals",
+            parsed_total=None,
+            line_items=[],
+        )
+        updated = engine._try_llm_fallback(evidence, dummy_image, llm_cfg)
+        assert updated.parsed_total is None
+
+    def test_llm_fallback_returns_evidence_when_response_empty(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """LLM fallback returns original evidence when API response has no content."""
+        from gnc_enrich.config import LlmConfig, LlmMode
+        from gnc_enrich.domain.models import ReceiptEvidence
+
+        dummy_image = tmp_path / "blank.jpg"
+        _make_receipt_image(dummy_image, ["Unreadable"])
+
+        import gnc_enrich.receipt.ocr as ocr_mod
+
+        def fake_image_to_string(_img: Image.Image) -> str:
+            return "no totals"
+
+        monkeypatch.setattr(ocr_mod.pytesseract, "image_to_string", fake_image_to_string)
+
+        def empty_chat(*_args, **_kwargs):
+            return {}
+
+        import gnc_enrich.llm.client as llm_client_mod
+
+        monkeypatch.setattr(llm_client_mod.LlmClient, "chat", staticmethod(empty_chat))
+
+        llm_cfg = LlmConfig(
+            mode=LlmMode.ONLINE,
+            endpoint="https://example.test/llm",
+            model_name="test-model",
+        )
+        engine = ReceiptOcrEngine(llm_config=llm_cfg)
+        evidence = ReceiptEvidence(
+            evidence_id="e1",
+            source_path=str(dummy_image),
+            ocr_text="no totals",
+            parsed_total=None,
+            line_items=[],
+        )
+        updated = engine._try_llm_fallback(evidence, dummy_image, llm_cfg)
+        assert updated.parsed_total is None
+
+    def test_llm_fallback_skips_non_dict_items(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """LLM fallback skips non-dict items in the items array."""
+        from gnc_enrich.config import LlmConfig, LlmMode
+        from gnc_enrich.domain.models import ReceiptEvidence
+
+        dummy_image = tmp_path / "blank.jpg"
+        _make_receipt_image(dummy_image, ["Unreadable"])
+
+        import gnc_enrich.receipt.ocr as ocr_mod
+
+        def fake_image_to_string(_img: Image.Image) -> str:
+            return "no totals"
+
+        monkeypatch.setattr(ocr_mod.pytesseract, "image_to_string", fake_image_to_string)
+
+        def chat_with_mixed_items(*_args, **_kwargs):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"total": "10.00", "items": [{"description": "A", "amount": "10"}, ["list", "not", "dict"], {"description": "B", "amount": "10"}]}'
+                        }
+                    }
+                ]
+            }
+
+        import gnc_enrich.llm.client as llm_client_mod
+
+        monkeypatch.setattr(llm_client_mod.LlmClient, "chat", staticmethod(chat_with_mixed_items))
+
+        llm_cfg = LlmConfig(
+            mode=LlmMode.ONLINE,
+            endpoint="https://example.test/llm",
+            model_name="test-model",
+        )
+        engine = ReceiptOcrEngine(llm_config=llm_cfg)
+        evidence = ReceiptEvidence(
+            evidence_id="e1",
+            source_path=str(dummy_image),
+            ocr_text="no totals",
+            parsed_total=None,
+            line_items=[],
+        )
+        updated = engine._try_llm_fallback(evidence, dummy_image, llm_cfg)
+        assert updated.parsed_total == Decimal("10.00")
+        assert len(updated.line_items) == 2
+
 
 # -- Receipt repository -------------------------------------------------------
 

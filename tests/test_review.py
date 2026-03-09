@@ -10,7 +10,7 @@ import pytest
 from gnc_enrich.config import ReviewConfig
 from gnc_enrich.domain.models import EmailEvidence, EvidencePacket, Proposal, ReviewDecision, Split
 from gnc_enrich.review.service import ReviewQueueService
-from gnc_enrich.review.webapp import ReviewWebApp, create_app
+from gnc_enrich.review.webapp import ReviewWebApp, create_app, _money_filter
 from gnc_enrich.state.repository import StateRepository
 
 
@@ -178,6 +178,17 @@ class TestReviewQueueService:
         )
         assert svc.is_decided("tx1") is True
 
+    def test_load_llm_config_falls_back_on_invalid_mode(self, tmp_path: Path) -> None:
+        """When run_config has invalid llm_mode, _load_llm_config returns disabled LlmConfig."""
+        state = StateRepository(tmp_path)
+        state.save_metadata(
+            "run_config",
+            {"llm_mode": "invalid_mode", "llm_endpoint": "http://x", "llm_model": "y"},
+        )
+        _seed_proposals(state)
+        svc = ReviewQueueService(state)
+        assert svc.llm_enabled is False
+
     def test_get_account_paths_empty_without_run(self, tmp_path: Path) -> None:
         """Without a pipeline run, account_paths is empty (dropdown shows only Create new)."""
         state = StateRepository(tmp_path)
@@ -239,6 +250,21 @@ class TestReviewQueueService:
         assert len(decisions) == 1
         assert decisions[0].final_description == "User entered description"
         assert svc.is_decided("tx1")
+
+
+# -- Webapp helpers -----------------------------------------------------------
+
+
+def test_money_filter_formats_decimal() -> None:
+    assert _money_filter(Decimal("25.50")) == "25.50"
+
+
+def test_money_filter_none_returns_empty() -> None:
+    assert _money_filter(None) == ""
+
+
+def test_money_filter_invalid_returns_str() -> None:
+    assert _money_filter("not-a-number") == "not-a-number"
 
 
 # -- Flask web app ------------------------------------------------------------

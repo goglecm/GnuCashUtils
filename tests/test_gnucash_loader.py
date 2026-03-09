@@ -8,7 +8,20 @@ from pathlib import Path
 import pytest
 
 from gnc_enrich.domain.models import Split, Transaction
-from gnc_enrich.gnucash.loader import GnuCashLoader, GnuCashWriter
+from gnc_enrich.gnucash.loader import GnuCashLoader, GnuCashWriter, _parse_fraction
+
+
+class TestParseFraction:
+    """Tests for _parse_fraction helper (malformed GnuCash data)."""
+
+    def test_parse_fraction_normal(self) -> None:
+        assert _parse_fraction("1500/100") == Decimal("15.00")
+
+    def test_parse_fraction_zero_denominator_returns_zero(self) -> None:
+        assert _parse_fraction("10/0") == Decimal(0)
+
+    def test_parse_fraction_unparseable_returns_zero(self) -> None:
+        assert _parse_fraction("not-a-number") == Decimal(0)
 
 
 class TestGnuCashLoader:

@@ -1,4 +1,6 @@
-from gnc_enrich.cli import build_parser
+import pytest
+
+from gnc_enrich.cli import build_parser, main
 
 
 def test_parser_exposes_expected_commands() -> None:
@@ -61,6 +63,36 @@ def test_rollback_command_defaults() -> None:
     assert ns.command == "rollback"
     assert ns.backup == ""
     assert ns.list_backups is False
+
+
+def test_main_invokes_run_and_returns_zero() -> None:
+    """main() with 'run' subcommand dispatches to pipeline and returns 0."""
+    from unittest.mock import patch
+
+    with patch("gnc_enrich.services.pipeline.EnrichmentPipeline") as mock_pipeline:
+        mock_pipeline.return_value.run.return_value = type("R", (), {"proposal_count": 2, "skipped_count": 0})()
+        rc = main(
+            [
+                "run",
+                "--gnucash-path",
+                "/tmp/book.gnucash",
+                "--emails-dir",
+                "/tmp/emails",
+                "--receipts-dir",
+                "/tmp/receipts",
+                "--processed-receipts-dir",
+                "/tmp/done",
+                "--state-dir",
+                "/tmp/state",
+            ]
+        )
+        assert rc == 0
+
+
+def test_main_unknown_command_raises_system_exit() -> None:
+    """main() with unknown command calls parser.error and raises SystemExit."""
+    with pytest.raises(SystemExit):
+        main(["unknown-subcommand", "--state-dir", "/tmp"])
 
 
 def test_run_command_with_llm() -> None:

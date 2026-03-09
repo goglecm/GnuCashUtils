@@ -107,6 +107,16 @@ def _run_args(env: dict[str, Path], extra: list[str] | None = None) -> list[str]
 
 
 class TestVerboseFlag:
+    def test_configure_logging_verbose_enables_debug(self, caplog) -> None:
+        """_configure_logging(True) sets DEBUG and logs verbose message."""
+        import logging
+
+        from gnc_enrich.cli import _configure_logging
+
+        with caplog.at_level(logging.DEBUG):
+            _configure_logging(True)
+        assert any("Verbose" in r.message for r in caplog.records)
+
     def test_verbose_flag_parsed(self, cli_env: dict[str, Path]) -> None:
         ns = build_parser().parse_args(["-v"] + _run_args(cli_env))
         assert ns.verbose is True
@@ -482,3 +492,68 @@ class TestRollbackFlags:
         state_dir.mkdir()
         rc = main(["rollback", "--state-dir", str(state_dir)])
         assert rc == 1
+
+    def test_rollback_list_backups_no_backup_dir(self, cli_env: dict[str, Path]) -> None:
+        """rollback --list-backups when no backup dir exists prints message and returns 0."""
+        from gnc_enrich.config import RunConfig
+        from gnc_enrich.services.pipeline import EnrichmentPipeline
+
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=cli_env["gnucash"],
+                emails_dir=cli_env["emails"],
+                receipts_dir=cli_env["receipts"],
+                processed_receipts_dir=cli_env["processed"],
+                state_dir=cli_env["state"],
+            )
+        )
+        rc = main(["rollback", "--state-dir", str(cli_env["state"]), "--list-backups"])
+        assert rc == 0
+
+    def test_rollback_list_backups_empty(self, tmp_path: Path) -> None:
+        """rollback --list-backups when backup dir exists but empty returns 0."""
+        from gnc_enrich.state.repository import StateRepository
+
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "backups").mkdir()
+        StateRepository(state_dir).save_metadata(
+            "run_config", {"gnucash_path": str(tmp_path / "book.gnucash")}
+        )
+        rc = main(["rollback", "--state-dir", str(state_dir), "--list-backups"])
+        assert rc == 0
+
+    def test_rollback_list_backups_shows_files(self, cli_env: dict[str, Path]) -> None:
+        """rollback --list-backups prints backup filenames when backups exist."""
+        from gnc_enrich.config import RunConfig
+        from gnc_enrich.services.pipeline import EnrichmentPipeline
+        from gnc_enrich.state.repository import StateRepository
+
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=cli_env["gnucash"],
+                emails_dir=cli_env["emails"],
+                receipts_dir=cli_env["receipts"],
+                processed_receipts_dir=cli_env["processed"],
+                state_dir=cli_env["state"],
+            )
+        )
+        state = StateRepository(cli_env["state"])
+        state.save_metadata("run_config", {"gnucash_path": str(cli_env["gnucash"])})
+        backup_dir = cli_env["state"] / "backups"
+        backup_dir.mkdir(exist_ok=True)
+        stem = cli_env["gnucash"].stem
+        suffix = cli_env["gnucash"].suffix
+        (backup_dir / f"{stem}.20250101T120000Z{suffix}").write_text("backup", encoding="utf-8")
+
+        from io import StringIO
+        import sys
+
+        old_out = sys.stdout
+        try:
+            sys.stdout = out = StringIO()
+            rc = main(["rollback", "--state-dir", str(cli_env["state"]), "--list-backups"])
+            assert rc == 0
+            assert stem in out.getvalue()
+        finally:
+            sys.stdout = old_out

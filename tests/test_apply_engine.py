@@ -325,6 +325,64 @@ class TestApply:
         assert tx.description == "Updated without proposal"
         assert any(s.account_path == "Unspecified" for s in tx.splits)
 
+    def test_receipt_moved_when_total_matches(self, tmp_path: Path) -> None:
+        """Receipt with matching total is moved to processed_receipts_dir on apply."""
+        gnucash = tmp_path / "book.gnucash"
+        with gzip.open(gnucash, "wb") as f:
+            f.write(SAMPLE_GNUCASH_XML.encode("utf-8"))
+        receipts_dir = tmp_path / "receipts"
+        receipts_dir.mkdir()
+        processed_dir = tmp_path / "processed"
+        processed_dir.mkdir()
+        receipt_file = receipts_dir / "receipt_match.jpg"
+        receipt_file.write_bytes(b"dummy image")
+
+        state_dir = tmp_path / "state"
+        state = StateRepository(state_dir)
+        state.save_metadata(
+            "run_config",
+            {
+                "gnucash_path": str(gnucash),
+                "processed_receipts_dir": str(processed_dir),
+            },
+        )
+        prop = Proposal(
+            proposal_id="p1",
+            tx_id="tx_unspec1",
+            suggested_description="Tesco 15/01/2025",
+            suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            confidence=0.8,
+            rationale="ML",
+            tx_date=date(2025, 1, 15),
+            tx_amount=Decimal("25.00"),
+            original_description="Card Payment",
+            original_splits=[Split(account_path="Unspecified", amount=Decimal("25.00"))],
+            evidence=EvidencePacket(
+                tx_id="tx_unspec1",
+                receipt=ReceiptEvidence(
+                    evidence_id="r1",
+                    source_path=str(receipt_file),
+                    ocr_text="Total 25.00",
+                    parsed_total=Decimal("25.00"),
+                ),
+            ),
+        )
+        state.save_proposals([prop])
+        state.save_decision(
+            ReviewDecision(
+                tx_id="tx_unspec1",
+                action="approve",
+                final_description="Tesco 15/01/2025",
+                final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+                decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+            )
+        )
+
+        ApplyEngine().apply(state_dir)
+
+        assert not receipt_file.exists()
+        assert any(processed_dir.glob("*"))
+
     def test_receipt_not_moved_when_total_mismatch(self, tmp_path: Path) -> None:
         """Spec 7.3: receipt with materially different total is not moved to processed."""
         gnucash = tmp_path / "book.gnucash"
@@ -457,6 +515,23 @@ class TestRollback:
         with pytest.raises(RuntimeError, match="No backup files found"):
             engine.rollback(state_dir)
 
+    def test_rollback_raises_when_backup_name_not_found(self, tmp_path: Path) -> None:
+        """Rollback with explicit backup_name raises when that file does not exist."""
+        gnucash = tmp_path / "book.gnucash"
+        gnucash.write_text("dummy", encoding="utf-8")
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        backup_dir = state_dir / "backups"
+        backup_dir.mkdir()
+        (backup_dir / f"{gnucash.stem}.20250101T120000Z{gnucash.suffix}").write_text(
+            "backup", encoding="utf-8"
+        )
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(gnucash)})
+        engine = ApplyEngine()
+        with pytest.raises(RuntimeError, match="not found"):
+            engine.rollback(state_dir, backup_name="nonexistent.gnucash")
+
     def test_rollback_with_specific_backup_name(self, tmp_path: Path) -> None:
         """Rollback honours an explicit backup filename when provided."""
         # Create original book and run_config metadata
@@ -491,6 +566,26 @@ class TestRollback:
 
 
 class TestBackupRetention:
+
+    def test_prune_backups_continues_when_unlink_fails(self, tmp_path: Path) -> None:
+        """_prune_backups logs warning but continues when deleting a backup fails."""
+        gnucash = tmp_path / "book.gnucash"
+        gnucash.write_text("dummy", encoding="utf-8")
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stem, suffix = gnucash.stem, gnucash.suffix
+        old_backup = backup_dir / f"{stem}.20250101T120000Z{suffix}"
+        old_backup.write_text("old", encoding="utf-8")
+        newer = backup_dir / f"{stem}.20250102T120000Z{suffix}"
+        newer.write_text("newer", encoding="utf-8")
+
+        engine = ApplyEngine()
+        from unittest.mock import patch
+
+        with patch.object(Path, "unlink", side_effect=OSError("Permission denied")):
+            engine._prune_backups(gnucash, backup_dir, retention=1)
+        assert old_backup.exists()
+        assert newer.exists()
 
     def test_prune_backups_keeps_most_recent_n(self, tmp_path: Path) -> None:
         """_prune_backups keeps at most N backups and deletes the oldest ones."""

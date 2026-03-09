@@ -222,6 +222,27 @@ def test_load_metadata_returns_none_for_corrupt_file(tmp_path) -> None:
     assert repo.load_metadata("run_config") is None
 
 
+def test_load_metadata_returns_none_when_not_dict(tmp_path) -> None:
+    """load_metadata returns None when JSON parses but root is not a dict."""
+    repo = StateRepository(tmp_path)
+    (tmp_path / "run_config.json").write_text("[]", encoding="utf-8")
+    assert repo.load_metadata("run_config") is None
+
+
+def test_load_proposals_returns_empty_when_root_not_dict(tmp_path) -> None:
+    """load_proposals returns empty list when file root is not a dict (e.g. array)."""
+    repo = StateRepository(tmp_path)
+    (tmp_path / "proposals.json").write_text('["not", "a", "dict"]', encoding="utf-8")
+    loaded = repo.load_proposals()
+    assert loaded == []
+
+
+def test_state_dir_property(tmp_path) -> None:
+    """state_dir property returns the configured directory."""
+    repo = StateRepository(tmp_path)
+    assert repo.state_dir == tmp_path
+
+
 # -- decisions ----------------------------------------------------------------
 
 

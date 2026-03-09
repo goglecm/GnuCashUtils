@@ -59,6 +59,30 @@ def test_llm_connection_test_success() -> None:
         assert _test_llm_connection(cfg) is True
 
 
+def test_pipeline_warmup_failure_is_non_fatal(tmp_path: Path) -> None:
+    """When LLM warmup raises, pipeline continues (non-fatal)."""
+    dirs = _setup_pipeline_dirs(tmp_path)
+    config = RunConfig(
+        gnucash_path=dirs["gnucash"],
+        emails_dir=dirs["emails"],
+        receipts_dir=dirs["receipts"],
+        processed_receipts_dir=dirs["processed"],
+        state_dir=dirs["state"],
+        llm=LlmConfig(
+            mode=LlmMode.ONLINE,
+            endpoint="http://localhost:11434",
+            model_name="llama3",
+            warmup_on_start=True,
+        ),
+    )
+    with patch("gnc_enrich.services.pipeline.LlmClient") as mock_client:
+        mock_client.return_value.enabled = True
+        mock_client.return_value.chat.return_value = {"choices": [{"message": {"content": "OK"}}]}
+        mock_client.return_value.warmup.side_effect = RuntimeError("Warmup failed")
+        result = EnrichmentPipeline().run(config)
+    assert result.proposal_count == 3
+
+
 def test_llm_connection_test_missing_endpoint_returns_false() -> None:
     """Missing endpoint or model returns False without making a request."""
     cfg_empty_endpoint = LlmConfig(mode=LlmMode.ONLINE, endpoint="", model_name="llama3")
