@@ -50,6 +50,7 @@ line-length = 100
 target-version = "py311"
 extend-select = ["I"]  # import sorting
 src = ["src", "tests"]
+ignore = ["E501"]
 
 [tool.black]
 line-length = 100
