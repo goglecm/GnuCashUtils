@@ -1,0 +1,8 @@
+{{description_block}}
+
+--- Categories ---
+{{categories_block}}
+
+--- Task ---
+Pick one category from the list below that best matches the description. Reply with only that category exactly as shown. One line, no JSON, no explanation.
+Example reply: Household:Kitchen equipment & expendables

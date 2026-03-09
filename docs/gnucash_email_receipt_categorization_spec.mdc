@@ -49,12 +49,12 @@ The system must:
 2. **Only GBP transactions** are eligible.
    - Mixed-currency transaction: **skip entirely**.
 3. **Future transactions are excluded**.
-4. **Only Unspecified/Imbalance-GBP transactions appear in the review queue.** "Settled" transfers (both splits already to bank/asset/liability) are **excluded** and do not appear. Transactions with **one** split to Unspecified/Imbalance and **one** to an own account (bank/asset) are treated as **likely transfers** only when the description suggests a transfer (e.g. "transfer", "to savings", "between accounts"); otherwise they appear in "To categorise (expenses)" with normal ML/fallback suggestions. Likely transfers are shown in a separate "Likely transfers" queue. **Apply behaviour**: when the user approves a (likely) transfer, only the description is updated; split structure is never modified.
+4. **Only Unspecified/Imbalance-GBP transactions appear in the review queue.** Transactions with at least one split to Unspecified or Imbalance-GBP are considered candidates, subject to the other rules (GBP-only, non-future). All such candidates are reviewed and applied using the same rules; there are no special queues or behaviours based on how money moves between accounts.
 5. **User approval required per transaction** before any write.
 6. **User can skip** any transaction.
 7. Skipped transactions are persisted and excluded in subsequent runs, with an option to reload/reconsider later.
-8. Existing non-empty description should be **appended to**, not overwritten.
-9. Description date formatting must use **GB format** (`DD/MM/YYYY`).
+8. The system proposes **improved descriptions** (from ML/LLM), but the **written description** is exactly the value approved by the user (which may be the original, the ML/LLM suggestion, or a completely new value).
+9. All human-facing dates (web UI, dry-run reports) must use **GB format** (`DD/MM/YYYY`), while internal machine-readable timestamps (e.g. in JSON logs) may remain ISO 8601.
 10. Refunds should be categorized to the **same category as the original transaction** when identifiable. Refunds are detected by checking whether the bank-side split (`account_name`) has a positive amount (incoming money). If the ML classifier predicts the original category with probability ≥ 0.4, it is used.
 11. **Not all transactions have emails** associated with them, and **not all emails have transactions** associated with them. The system must handle both cases gracefully.
 12. **Receipts may often be absent** — most of the time there may be no receipts at all. The system must not require receipts to function.
@@ -91,16 +91,17 @@ The system must:
 User-configurable parameters must include at least:
 - Email date window: default `±7 days`.
 - Amount tolerance for evidence matching (e.g., ±0.50 GBP or configurable percent/absolute).
-- Minimum confidence thresholds for auto-proposal display tiers.
-- Backup policy (on/off + retention count/location).
+- Minimum confidence thresholds for ML/LLM categorisation (e.g. when to treat a suggestion as "high confidence" or to trigger LLM use); the UI currently shows all proposals but surfaces the confidence value.
+- Backup policy (on/off + backup location).
 - Skip-list behavior (exclude by default, include with explicit flag).
 - LLM integration mode:
   - offline/local model
   - online model endpoint (with optional API key for `Authorization: Bearer` header)
   - disabled
-- Optional **use_web**: when using a local/offline LLM, run web searches (e.g. DuckDuckGo) and inject snippets into the LLM prompt for category suggestions (requires optional dependency `duckduckgo-search`).
+- Optional **use_web**: when using a local/offline LLM, run web searches (e.g. DuckDuckGo) and inject snippets into the LLM prompt for category suggestions (requires optional dependency `ddgs`).
 - When LLM is enabled, the pipeline runs a **connection test** at start (minimal chat completion request); INFO logs report "LLM connection OK" or a warning if the endpoint is unreachable.
-- LLM configuration (mode, endpoint, model name) is persisted in `run_config.json` and automatically loaded during the review phase, so the user need not re-specify it.
+- LLM configuration (mode, endpoint, model name, use_web, extraction endpoint/model/api key when set) is persisted in run metadata and automatically loaded during the review phase.
+- **Run phase and LLM**: By default, the **run** phase does **not** invoke the LLM; it produces ML-only (and heuristic) proposals. This keeps runs fast and deterministic. Optional flag `use_llm_during_run` (not exposed in CLI by default) can enable LLM during run for backward compatibility. LLM is primarily invoked on demand in the **review** phase via "Check with LLM" per proposal.
 
 ---
 
@@ -110,7 +111,7 @@ User-configurable parameters must include at least:
 - **Language**: Python 3.11+
 - **GnuCash parsing**: `lxml` for XML (gzip-compressed `.gnucash` files)
 - **OCR**: `pytesseract` + `Pillow` + `pillow-heif`, with optional LLM fallback
-- **ML**: scikit-learn TF-IDF + SGDClassifier (`joblib` for serialization), optional LLM (local/remote) for rationale
+- **ML**: scikit-learn TF-IDF + SGDClassifier (`joblib` for serialization), optional LLM (local/remote) for category and description when confidence is below 60% (when `use_llm_during_run` is set)
 - **Web framework**: Flask + Jinja2 for review UI
 - **State persistence**: JSON/JSONL flat files
 - **Email parsing**: Python stdlib `email` module
@@ -122,8 +123,8 @@ User-configurable parameters must include at least:
    - Parse accounts (with cached path lookup), splits (fraction format), transactions, currencies.
    - Validate and apply approved mutations (re-point account GUIDs, update split values/quantities, create new split elements for split transactions, remove surplus target splits).
 2. **Candidate Selector**
-   - Select only transactions with at least one split to Unspecified or Imbalance-GBP. Settled transfers (both legs to bank/asset/liability) are excluded.
-   - Enforce GBP-only, non-future. Transactions with exactly one leg to Unspecified/Imbalance and one to an own account are marked as likely transfers (`is_unsettled_transfer`) only when the description suggests a transfer (e.g. "transfer", "to savings"); others go to "To categorise (expenses)".
+   - Select only transactions with at least one split to Unspecified or Imbalance-GBP.
+   - Enforce GBP-only, non-future.
 3. **Email Pipeline**
    - Parse `.eml` metadata and body (plain text preferred over HTML; HTML tags stripped and entities decoded).
    - Filter body: remove signature blocks (RFC 3676 `-- `, `---`, `___`, `Sent from`, `Get Outlook`) and quoted replies (`>` prefixed lines).
@@ -136,25 +137,112 @@ User-configurable parameters must include at least:
    - Build evidence packets from emails, receipts, history.
 6. **ML/AI Suggestion Engine**
    - Category prediction + confidence score + rationale snippets.
-   - Description proposal in GB date style; merchant name extracted from email sender domain.
+   - Recommended description from ML does not include a date; merchant name is derived from email sender domain when emails are present.
    - Keyword-based fallback (Food, Transport, Entertainment, Utilities) when insufficient training data (< 2 categorized transactions or < 2 categories). Default: `Expenses:Miscellaneous` at confidence 0.3. Suggested category is never Unspecified or Imbalance-GBP; if the model would suggest those, `Expenses:Miscellaneous` is used instead.
-   - LLM consulted only when ML confidence < 0.6. When **use_web** is set, web search results (e.g. DuckDuckGo) are injected into the LLM prompt for category suggestions.
-   - Evidence-driven description enrichment joins base, email detail, and receipt detail with ` | ` separator.
+   - **Run phase**: Proposals are built using ML (and heuristics) only; LLM is **not** invoked during run by default (`skip_llm=True` in the pipeline).
+   - **Optional extraction LLM** (separate endpoint/model): When configured, it runs only when the user triggers "Check with LLM" in review (or, if enabled, during run). It extracts from emails: **per-email** extraction in one session, then a **merge** step. Output: `seller_name`, `items` (array of `{description, amount}`; only dict-shaped entries are kept; list or other types are filtered out), `order_ids`, `transaction_ids`. If **use_web** is set: web search is run only for **seller** when the seller string contains at least one letter (name-like), and only for **items** that have a description/name with at least one letter (not amount-only); search query is suffixed with " English" for English descriptions. Results are 50–200 character snippets.
+   - **Category LLM** (main endpoint): When invoked (e.g. from "Check with LLM"), it receives the **Input** (transaction description, amount, and either "Extracted from emails" block or raw emails). **Step 1**: Using the details provided in the Input, improve the transaction description (do not include total amount); ensure the improved description includes the order/transaction ID or number when it appears in the Input. Return confidence 1–10 and one top-level category from the list. **Step 2**: Subcategories of the chosen category + improved description + amount; LLM returns final full path category and ledger description. No reasoning string. If the LLM response omits the **category** field in step 1 or step 2, the system uses a fallback (first allowed path or step 1 choice) and logs a warning.
+   - Evidence-driven description enrichment combines the original transaction description with email/receipt detail to propose an improved description; the final written description is whatever value the user approves.
 7. **Review Web App**
-   - One transaction at a time review via routes: `/` (auto-redirect to next pending or done page), `/queue` (full queue sorted by date), `/review/<id>` (individual review).
+   - One transaction at a time review via routes: `/` (auto-redirect to next pending or done page), `/queue` (full queue sorted by date), `/review/<id>` (individual review), and `POST /review/<id>/llm-check` to run the LLM for that proposal.
    - **Navigation**: each review page has Previous/Next links to move through the queue in date order without returning to the queue list.
-   - **Queue sections**: the queue view shows (1) "To categorise (expenses)" — Unspecified/Imbalance-GBP that are not likely transfers; (2) "Likely transfers" — 2-split (target + own account) with description suggesting transfer; (3) "Approved transactions" — list of decisions. Settled transfers (both legs to bank/asset) do not appear.
-   - **Your Decision**: category/split choice via a dropdown of all GnuCash account paths (from last run) plus "Create new" with a text field for a new category path (e.g. Expenses:MyCategory).
-   - **Email evidence display**: cleaned body only (no HTML/metadata; `<style>` blocks and CSS comments/rules stripped so Outlook-style cruft is removed); optional "context around amount" snippet; keyword-based category hint per email; duplicate newlines/whitespace collapsed for readability.
-   - **Confidence**: contributing factors (e.g. ML classifier score, refund detection, keyword fallback, email/receipt evidence) are shown so the user understands how the confidence was calculated.
-   - Evidence display, edit controls, approve/skip.
-   - Already-decided proposals shown in read-only mode.
+   - **Queue sections**: the queue view shows (1) "To categorise" — all Unspecified/Imbalance-GBP candidates; (2) "Approved transactions" — list of decisions.
+   - **Transaction view**: original transaction (date, amount, description, splits) only; no combined "before/after" block.
+   - **ML proposal section**: ML confidence, recommended category, recommended description (from ML/heuristics only).
+   - **LLM proposal section**: "Check with LLM" is available only when the main LLM is enabled (mode ≠ disabled) **and** there is usable input (non-empty original description, or matched emails, or a matched receipt) and the proposal is not yet decided. It uses **only the emails that are currently ticked** in the Matched emails card; when no emails are ticked or no emails are present, it falls back to transaction description only. On success, or when results are already stored: seller (with web description if present), recommended description, items (with amounts and web descriptions), recommended category, LLM confidence. Stored on the proposal as `llm_confidence`, `llm_category`, `llm_description`, `extraction_result`; ML fields are **not** overwritten.
+   - **Email evidence display**: Placed **before** the LLM proposal card. **Same context as used for LLM**: up to 500 characters before the first mention of the amount, text between earliest and last amount mention, nothing after the last mention. When the transaction amount is **missing or zero**, context is the first 500 characters of the body only (to avoid matching the digit "0" everywhere). **Deduplication**: emails whose context is ≥95% similar (by sequence ratio) are collapsed to one; the list shows one entry per unique context. Each displayed email shows sender, subject, relevance score, and a **keyword-based category hint** (shown in blue as "Suggested category from email (keyword heuristic)" — from `CategoryPredictor.suggest_category_from_email`, not the LLM). When the review app has loaded the GnuCash account list, the hint may be a **leaf category** from that list under the heuristic (e.g. Expenses:Food:Groceries instead of just Expenses:Food) when such a leaf exists. Only **ticked** emails are sent to the LLM when the user runs "Check with LLM".
+   - **Your Decision**: "Use ML proposal" and "Use LLM proposal" buttons to fill description and category from ML or LLM result; category/split choice via dropdown of GnuCash account paths plus "Create new" with text field. User can edit before submitting. **Approve** and **Skip** are the only actions; both approved and skipped decisions are persisted; apply writes approved ones to GnuCash.
+   - **Monetary amounts**: All amounts in the web view are displayed with exactly two decimal places.
+   - **Confidence**: ML section shows ML confidence only; LLM section shows LLM confidence when available.
+   - Evidence display, edit controls, approve/skip. Already-decided proposals shown in read-only mode.
    - Invalid split amounts silently skipped; empty splits fall back to ML-suggested splits.
 8. **Apply Engine**
    - Dry-run report or write mode with backup + audit.
    - Receipt files moved to processed directory during apply (not during review), only when totals are amount-compatible. Filename conflicts resolved with `_{counter}` suffix.
 9. **Feedback & Learning Store**
    - Capture user overrides and approvals for retraining/improved ranking.
+
+### 6.2.1 Implementation notes (error handling and defaults)
+
+The following behaviours are guaranteed by the implementation and tests; they support graceful degradation and predictable defaults.
+
+- **GnuCash Loader**: `get_tree()` returns `None` when no file has been loaded. `get_account_path(account_guid)` returns the empty string for an unknown or empty account ID.
+- **State repository**: Keyed metadata is stored as `{key}.json`. `load_metadata(key)` returns `None` when the file is missing or corrupt. When loading JSONL streams (decisions, skipped IDs, audit log, feedback, email index), malformed or invalid lines are skipped with a logged warning; loading continues and returns the successfully parsed records.
+- **Review service**: If evidence enrichment fails during `submit_decision` (e.g. `_enrich_from_approved_evidence` raises), the decision is still saved with the user-entered description (non-fatal).
+- **Review web app**: If building emails for display or category hints raises, the review page still returns 200 with empty email display. If serializing the LLM extraction for JSON raises, `POST /review/<id>/llm-check` returns 200 with `extraction: null` and other fields intact (non-fatal).
+
+### 6.3 LLM Interaction Architecture
+
+The system uses two LLM entry points and a single shared flow. All behaviour below is consistent with the implementation.
+
+**Entry points**
+
+1. **Run phase (optional)**  
+   The pipeline calls the predictor with `skip_llm=True` by default (`use_llm_during_run=False`). So during **run**, the LLM is **not** invoked. Proposals are ML-only. If `use_llm_during_run` is set, the pipeline passes `skip_llm=False` and the predictor may call the LLM when ML confidence < 60%; that path uses the same flow as (2) and returns an **LlmSuggestion** used to refine the single proposal (category/description). No per-proposal `llm_confidence`, `llm_category`, `extraction_result` are stored from run.
+
+2. **Review phase: "Check with LLM"**  
+   The user clicks "Check with LLM" on a review page. The web app sends `POST /review/<proposal_id>/llm-check`. The review service loads the proposal, builds a minimal **Transaction** (tx_id, description, amount, etc.) and the proposal’s evidence (emails, receipt). It loads **LLM config** from run metadata (`run_config`: mode, endpoint, model, use_web, extraction_endpoint, extraction_model, extraction_api_key when set). It calls the predictor’s **run_llm_check(tx, emails, receipt, account_paths)**. The result (extraction, category, description, confidence) is written onto the **proposal** as `extraction_result`, `llm_confidence`, `llm_category`, `llm_description`; **ML fields** (`suggested_description`, `suggested_splits`) are **not** overwritten. The API returns JSON with the same data (extraction serialized for JSON). If the predictor returns `None` (LLM disabled or flow failed), the API returns **400** and the proposal is not updated.
+
+**Single LLM flow (_run_llm_flow)**
+
+Both entry points that use the LLM ultimately go through one flow in the predictor:
+
+1. **Inputs**: Transaction (description, amount), up to 3 emails (sorted by date), allowed **account_paths** (GBP expense/income paths only).
+2. **Extraction (optional)**  
+   **With emails:** If **extraction_endpoint** (and extraction_model) are configured and there are emails:
+   - For each email, body **context** is taken (same as display: 500 characters before first amount, between earliest and last amount, nothing after; or first 500 characters if amount is 0/missing).
+   - **Per-email** extraction request to the extraction LLM; output: `seller_name`, `items` (dict-shaped only), `order_ids`, `transaction_ids`.
+   - If multiple emails: a **merge** request combines results (first non-empty seller, combined items, merged IDs).
+   - If **use_web** is set: for seller and for each item with name-like description, a web search (50–200 char snippet, query suffixed with " English") is run and stored as `seller_web_description` / item `web_description`.
+   - Result is **extraction** (dict or None). If present, it is formatted as text ("Extracted from emails") for the category step.
+   **Without emails:** When there are no emails, the system uses the **extraction LLM** (or the main LLM if extraction is not configured) to infer supplier and/or item name(s) from the **transaction description** and amount. If **use_web** is set, web descriptions for the supplier and items are then fetched. The result is formatted the same way for the category step.
+3. **Category step 1**  
+   **Input** to the main LLM: transaction description, amount, and either "Extracted from emails" (if extraction succeeded) or raw "Emails" block (same context as above). **Tasks**: (1) Improve description (no total amount; include order/transaction ID when present); (2) Confidence 1–10; (3) Pick one top-level category from the list. Response: `improved_description`, `confidence`, `category`. If `category` is missing, fallback is first allowed path; a warning is logged.
+4. **Category step 2 (when confident)**  
+   If step 1 confidence > threshold and there are subcategories: send improved description, amount, and subcategory list; LLM returns **full path** category and optional description. If `category` is missing, step 1 choice is used; a warning is logged.
+5. **Output**  
+   The flow returns a single dict: `extraction`, `category`, `description`, `confidence` (0–1). If any step fails (no allowed_paths, no step1 response, exception), it returns **None**. The predictor’s **run_llm_check** then also returns **None** (LLM disabled or flow failed), so the review API returns **400** and the proposal is not updated.
+
+**6.3.1 Flow by configuration (cross-product)**
+
+The following table describes the behaviour for each combination of: **main LLM** (enabled / disabled), **extraction LLM** (configured vs not), **use_web** (on vs off), and **transaction has emails** (yes vs no). "Check with LLM" is only available when the main LLM is enabled (mode ≠ disabled).
+
+| Main LLM | Extraction LLM | use_web | Has emails | Flow |
+|----------|----------------|---------|------------|------|
+| **Disabled** | any | any | any | No LLM run. "Check with LLM" returns 400; proposal unchanged. |
+| ON | OFF | OFF | **No** | Main LLM extracts supplier/items from **transaction description**; no web. Step 1 with that text; Step 2 if confident. |
+| ON | OFF | OFF | **Yes** | No extraction. Step 1 with **raw email context** (no "Extracted from emails" block). Step 2 if confident. use_web not used. |
+| ON | OFF | ON | **No** | Main LLM extracts from description; **use_web** adds 50–200 char descriptions for seller and items. Step 1; Step 2 if confident. |
+| ON | OFF | ON | **Yes** | No extraction. Step 1 with raw emails. use_web is not applied (no extraction dict to enrich). Step 2 if confident. |
+| ON | ON | OFF | **No** | **Extraction LLM** extracts from transaction description; no web. Step 1 with "Extracted from emails"; Step 2 if confident. |
+| ON | ON | OFF | **Yes** | Per-email extraction, merge; no web. Step 1 with "Extracted from emails"; Step 2 if confident. |
+| ON | ON | ON | **No** | Extraction LLM from description; **use_web** adds seller/item web descriptions. Step 1; Step 2 if confident. |
+| ON | ON | ON | **Yes** | Per-email extraction, merge; **use_web** adds seller/item web descriptions. Step 1 with "Extracted from emails"; Step 2 if confident. |
+
+**6.3.2 LLM prompt templates (external files)**
+
+The exact wording sent to the LLM in each scenario is defined by **text files with `{{placeholders}}`** so users can modify prompts without changing code. The predictor loads templates from (1) **user override**: `<state-dir>/prompts/` if it exists and contains the file, else (2) **package defaults** shipped with the app in `gnc_enrich/prompts/`.
+
+| File | Scenario | Placeholders |
+|------|----------|--------------|
+| `extract_email.txt` | Per-email extraction (extraction LLM) | `{{email_context}}` (full email context block) |
+| `extract_merge.txt` | Merge multiple extractions (extraction LLM) | `{{extractions}}` (preformatted blocks `"--- Extraction N ---\\n{json}"`) |
+| `extract_from_description.txt` | Extract supplier/items from transaction description when there are no emails | `{{description}}`, `{{amount}}` |
+| `category_step1.txt` | Category step 1 (main LLM): improve description, confidence, top-level category | `{{expense_note}}`, `{{input_block}}`, `{{desc_task}}`, `{{categories_line}}`, `{{example}}` |
+| `category_step2.txt` | Category step 2 (main LLM): pick a subcategory under the chosen top-level category | `{{description_block}}`, `{{categories_block}}` |
+
+If a template file is missing from both locations, the code falls back to the built-in default prompt text so behaviour remains well-defined.
+
+**Config and state**
+
+- **Run metadata** (`run_config`): Persisted after each run. Holds gnucash path, evidence dirs, **llm_mode**, **llm_endpoint**, **llm_model**, **llm_use_web**, **llm_extraction_endpoint**, **llm_extraction_model**, **llm_extraction_api_key** (when set). Review loads this to build **LlmConfig** for run_llm_check and for evidence enrichment (e.g. describe_terse_items).
+- **Proposal state**: Proposals may store **llm_confidence**, **llm_category**, **llm_description**, **extraction_result**. On load, the **items** array in **extraction_result** is sanitized to dict-only entries.
+
+**Consistency with §6.2**
+
+- Extraction: per-email then merge; dict-only items; use_web only for name-like seller/items; 50–200 char snippets; " English" suffix.
+- Category: step 1 (Input details, order/transaction ID in description); step 2 (full path); fallbacks when `category` is omitted.
+- Review UI: "Check with LLM" → POST llm-check → proposal updated with llm_* and extraction_result; ML fields unchanged; API 400 when LLM disabled or flow returns None.
 
 ---
 
@@ -209,7 +297,7 @@ User-configurable parameters must include at least:
 1. Must use **ML or more sophisticated AI approach** (not rules-only).
 2. Historical categorized transactions are mandatory training/context source.
 3. Confidence score required for each proposed category/split.
-4. Show model rationale/evidence links to user.
+4. Show model rationale or evidence links to the user (e.g. in the review web view as ML rationale or confidence breakdown; see §9.2).
 5. Optional LLM "opinion/evidence synthesis" is allowed (online or offline), but system remains local-first and operable offline.
 6. User decisions (approve/edit/override/skip) must be captured for future learning.
 
@@ -221,15 +309,21 @@ User-configurable parameters must include at least:
 - Exactly one transaction at a time.
 
 ## 9.2 Required Transaction View
-- **Before/after comparison**: original transaction details (date, amount, description, split accounts and memos) shown side-by-side with proposed changes (new description, new splits, confidence, rationale).
-- Queue view sorted by transaction date.
-- Evidence panel:
-  - matched emails (all candidates + relevance rank); displayed as sender, subject, and cleaned body text only (no raw headers/metadata)
-  - select/deselect all button for email checkboxes
-  - matched receipt OCR summary + source image preview/path
-  - model confidence and rationale
+
+The following information must be available to the user so they can make an informed decision. See also §6.2 (Review Web App) for component-level behaviour.
+
+- **Transaction**: original details (date, amount, description, split accounts and memos). Amount may be shown as missing (e.g. dash) when not set.
+- **ML proposal**: ML confidence (percentage), recommended category, recommended description. When available, the ML rationale or confidence breakdown (e.g. "Refund detection", "ML classifier: Expenses:Food (85%)") may be shown so the user understands why the category was suggested (§8).
+-- **LLM proposal**: optional "Check with LLM" button when the main LLM is enabled and there is usable input (non-empty description, matched emails, or matched receipt), and the proposal is not yet decided. When run or when results are already stored: seller (with web description if present), recommended description, items (amounts and web descriptions), recommended category, LLM confidence. If the LLM check fails (API 400), the UI must surface the error (e.g. "LLM disabled or check failed") so the user knows why no LLM result appeared.
+- **Navigation**: pending count and total count (e.g. "N pending / M total"); Previous/Next links to move through the queue in date order without returning to the queue list.
+- **Queue view** (when viewing the list): sorted by transaction date; sections for "To categorise" and "Approved transactions" as in §6.2.
+- **Evidence panel**:
+  - **Matched emails**: deduplicated by 95% context similarity; each displayed with **email context** = 500 characters before first amount, between earliest and last amount, nothing after last (same as LLM input; when amount is missing or zero, first 500 characters only); sender, subject, relevance rank (score); select/deselect all button; keyword-based category hint per email.
+  - **Matched receipt**: OCR summary (e.g. line items, parsed total), source image preview or path.
+- **Your Decision**: "Use ML proposal" and "Use LLM proposal" buttons to prefill description and category from the ML or LLM result; category/split choice via dropdown of GnuCash account paths plus "Create new" with text field for new categories. User can edit description, category, and splits before submitting. Actions: **Approve** or **Skip**.
 
 ## 9.3 User Actions
+- **Use ML proposal** or **Use LLM proposal** to prefill description and category (then optionally edit).
 - Approve as-is.
 - Edit description.
 - Edit category.
@@ -252,10 +346,13 @@ User-configurable parameters must include at least:
 - Backup is created by default before any apply operation (`--create-backup` defaults to `true`; suppressible with `--no-backup`).
 - Backup location defaults to `<state-dir>/backups`; overridable with `--backup-dir`.
 - Backup files named `{stem}.{YYYYMMDDTHHMMSSZ}{suffix}` (UTC timestamp).
+- Optional **backup retention**: `--backup-retention N` (and corresponding config) keeps at most **N** backups per GnuCash file, deleting older ones after a successful apply; when unset, all backups are retained.
 
 ## 10.3 Undo
 - Maintain an edit journal (`apply_journal.jsonl`) recording original description, new description, action, and backup path for each changed transaction.
-- Rollback restores the most recent backup file by timestamp.
+- Rollback restores a backup of the GnuCash file using the apply engine:
+  - By default, the most recent backup file (by timestamp) is restored.
+  - A specific backup can be restored by name (e.g. via `gnc-enrich rollback --state-dir <path> --backup <filename>`).
 
 ## 10.4 Audit Log
 For every candidate and final action, capture:
@@ -316,7 +413,8 @@ Notes:
 - After `pip install`, the `gnc-enrich` console script is available (equivalent to `python -m gnc_enrich`).
 - `--create-backup` (default: true) and `--in-place` (default: true) can be negated with `--no-backup` and `--no-in-place`.
 - If `--emails-dir` or `--receipts-dir` does not exist, the system logs a message and continues without that evidence source.
-- `--llm-use-web`: when using a local LLM (`--llm-mode offline`), run web searches and inject results into the prompt for category suggestions (optional; requires `pip install duckduckgo-search` or `pip install -e ".[web]"`).
+- `--llm-use-web`: when using a local LLM (`--llm-mode offline`), run web searches and inject results into the prompt for category suggestions (optional; requires `pip install ddgs` or `pip install -e ".[web]"`).
+- `--llm-timeout`: timeout in seconds for LLM API calls (default 180); increase if local Ollama still times out.
 
 ---
 
@@ -331,7 +429,7 @@ Persist at least:
 - `feedback_events.jsonl` — user feedback for retraining
 - `audit_log.jsonl` — complete audit trail
 - `apply_journal.jsonl` — undo journal for rollback
-- `run_config.json` — metadata from last pipeline run (gnucash path, evidence directories, LLM configuration)
+- Run metadata (e.g. `run_config.json` or keyed metadata) — gnucash path, evidence directories, LLM configuration (mode, endpoint, model, use_web, extraction endpoint/model when set). Proposals may include optional `llm_confidence`, `llm_category`, `llm_description`, `extraction_result` (seller_name, seller_web_description, items, order_ids, etc.) when the user has run "Check with LLM" for that proposal. On load, the **items** array in **extraction_result** is sanitized to contain only dict-shaped entries (legacy state may have stored list or other types).
 
 State includes schema version headers for forward migration. Corrupt JSONL files are recovered by skipping unparseable lines with a warning. Corrupt `proposals.json` returns an empty proposal list.
 

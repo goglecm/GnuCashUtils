@@ -1,0 +1,16 @@
+{{expense_note}}
+
+--- Input ---
+{{input_block}}
+
+--- Tasks ---
+1) {{desc_task}}
+
+2) Confidence 1-10 that the transaction can be categorised: 1 = not at all confident, 10 = very confident. You can only be confident if: the description or email contains an item description that fits the chosen category, OR the seller is known to belong to that category. Do not inflate the score.
+
+3) Categories (pick exactly one from this list): {{categories_line}}
+You must pick one category from the list above; use only one of these names. Do not invent a category.
+
+--- Output ---
+Reply with only valid JSON, no other text. Example:
+{{example}}

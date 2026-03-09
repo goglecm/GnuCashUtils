@@ -1,8 +1,11 @@
 """Tests for EML parsing and email index repository."""
 
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+
+import pytest
 
 from gnc_enrich.email.parser import EmlParser, _extract_amounts, _filter_body, _strip_html
 from gnc_enrich.email.index import EmailIndexRepository
@@ -55,6 +58,12 @@ class TestEmlParser:
         parser = EmlParser()
         ev = parser.parse(FIXTURES_DIR / "order_confirm.eml")
         assert len(ev.evidence_id) == 16
+
+    def test_parse_raises_when_file_missing(self) -> None:
+        """parse() raises FileNotFoundError when .eml file does not exist (caller must handle)."""
+        parser = EmlParser()
+        with pytest.raises(FileNotFoundError):
+            parser.parse(FIXTURES_DIR / "nonexistent.eml")
 
     def test_full_body_preserved(self) -> None:
         parser = EmlParser()
@@ -245,3 +254,83 @@ class TestEmailIndexRepository:
         manifest = json.loads((tmp_path / "email_index_manifest.json").read_text())
         assert "order_confirm.eml" in manifest["indexed_files"]
         assert len(manifest["indexed_files"]) == 13
+
+    def test_build_or_load_skips_invalid_index_line_shape(self, tmp_path: Path) -> None:
+        """When index has a valid JSON line missing required evidence keys, that line is skipped."""
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        index_path = state_dir / "email_index.jsonl"
+        index_path.write_text(
+            json.dumps({"_schema_version": 1}) + "\n"
+            + json.dumps({"evidence_id": "e1", "message_id": "m1", "sender": "a@b.com", "subject": "S", "sent_at": "2025-01-15T12:00:00+00:00"}) + "\n"
+            + json.dumps({"not_evidence": "invalid"}) + "\n",
+            encoding="utf-8",
+        )
+        (state_dir / "email_index_manifest.json").write_text(
+            json.dumps({"_schema_version": 1, "indexed_files": []}), encoding="utf-8"
+        )
+        eml_dir = tmp_path / "emails"
+        eml_dir.mkdir()
+        repo = EmailIndexRepository()
+        repo.build_or_load(eml_dir, state_dir)
+        assert len(repo._entries) == 1
+        assert repo._entries[0].evidence_id == "e1"
+
+    def test_build_or_load_skips_corrupt_index_line(self, tmp_path: Path) -> None:
+        """When email_index.jsonl has a corrupt line, it is skipped and loading is non-fatal."""
+        import json
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        index_path = state_dir / "email_index.jsonl"
+        index_path.write_text(
+            json.dumps({"_schema_version": 1}) + "\n"
+            "{invalid json\n"
+            + json.dumps({"_schema_version": 1}) + "\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "emails").mkdir()
+        manifest_path = state_dir / "email_index_manifest.json"
+        manifest_path.write_text(json.dumps({"_schema_version": 1, "indexed_files": []}), encoding="utf-8")
+        repo = EmailIndexRepository()
+        repo.build_or_load(tmp_path / "emails", state_dir)
+        assert len(repo._entries) == 0
+
+    def test_build_or_load_handles_corrupt_manifest(self, tmp_path: Path) -> None:
+        """When email_index_manifest.json is corrupt, build_or_load starts with empty indexed set (non-fatal)."""
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "email_index_manifest.json").write_text("not valid json {", encoding="utf-8")
+        eml_dir = tmp_path / "emails"
+        eml_dir.mkdir()
+        (eml_dir / "one.eml").write_text(
+            "From: a@b.com\nTo: b@c.com\nSubject: X\nDate: Mon, 1 Jan 2025 12:00:00 +0000\n\nBody",
+            encoding="utf-8",
+        )
+        repo = EmailIndexRepository()
+        repo.build_or_load(eml_dir, state_dir)
+        assert len(repo._entries) == 1
+
+    def test_build_or_load_skips_unparseable_eml_gracefully(self, tmp_path: Path) -> None:
+        """When one .eml file fails to parse, build_or_load skips it and continues (non-fatal)."""
+        from unittest.mock import patch
+
+        eml_dir = tmp_path / "emails"
+        eml_dir.mkdir()
+        (eml_dir / "good.eml").write_text(
+            "From: a@b.com\nTo: c@d.com\nSubject: Test\nDate: Mon, 15 Jan 2025 12:00:00 +0000\n\nBody £10.00",
+            encoding="utf-8",
+        )
+        (eml_dir / "bad.eml").write_text("x", encoding="utf-8")
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        repo = EmailIndexRepository()
+        original_parse = repo._parser.parse
+
+        def parse_side_effect(path):
+            if path.name == "bad.eml":
+                raise ValueError("Simulated parse error")
+            return original_parse(path)
+
+        with patch.object(repo._parser, "parse", side_effect=parse_side_effect):
+            repo.build_or_load(eml_dir, state_dir)
+        assert len(repo._entries) == 1

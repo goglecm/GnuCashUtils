@@ -317,6 +317,10 @@ class TestApplyFlags:
         ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s", "--no-backup"])
         assert ns.create_backup is False
 
+    def test_backup_retention_flag(self) -> None:
+        ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s", "--backup-retention", "5"])
+        assert ns.backup_retention == 5
+
     def test_backup_dir_flag(self, tmp_path: Path) -> None:
         ns = build_parser().parse_args([
             "apply", "--state-dir", "/tmp/s",
@@ -405,3 +409,22 @@ class TestApplyFlags:
         assert ns.backup_dir == tmp_path / "bak"
         assert ns.in_place is True
         assert ns.dry_run is False
+
+
+class TestRollbackFlags:
+    def test_rollback_defaults(self) -> None:
+        ns = build_parser().parse_args(["rollback", "--state-dir", "/tmp/s"])
+        assert ns.command == "rollback"
+        assert ns.backup == ""
+        assert ns.list_backups is False
+
+    def test_rollback_list_backups(self) -> None:
+        ns = build_parser().parse_args(["rollback", "--state-dir", "/tmp/s", "--list-backups"])
+        assert ns.list_backups is True
+
+    def test_rollback_missing_run_config_returns_error_code(self, tmp_path: Path) -> None:
+        """When run_config metadata is missing, rollback prints an error and returns non-zero."""
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        rc = main(["rollback", "--state-dir", str(state_dir)])
+        assert rc == 1

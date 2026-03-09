@@ -1,38 +1,37 @@
-# GnuCash Enrich
+## GnuCash Enrich
 
-Local-first Python tooling to enrich unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
+Local-first Python tooling that helps you resolve unresolved GnuCash transactions using email and receipt evidence, with ML-assisted suggestions and mandatory user approval.
 
-> Status: **v1 Implemented** — all modules complete, 302 tests passing.
-
-## What this project does
-
-1. Reads a GnuCash book (gzip-compressed XML `.gnucash`).
-2. Finds unresolved transactions (categories like `Unspecified` and `Imbalance-GBP`).
-3. Gathers evidence from:
-   - `.eml` emails from directories with subdirectories (parsed, indexed, searched by date/amount/text)
-   - Receipt images (`jpg`, `jpeg`, `png`, `heic`, `heif`) via Tesseract OCR
-   - Historical categorized transactions
-4. Generates suggested descriptions/categories/splits with ML confidence scores. Can propose new categories.
-5. Presents proposals **one transaction at a time** in a local Flask web app: queue split into "To categorise (expenses)" and "Transfers (own accounts)", with Previous/Next navigation, clean email body display, confidence breakdown, and an "Approved transactions" list. Approved evidence enriches descriptions.
-6. Applies only explicitly approved changes, with backup + audit + rollback journal. New categories are created in the GnuCash file.
-
-The full specification is in:
-- `docs/gnucash_email_receipt_categorization_spec.mdc`
-- `docs/architecture_implementation_plan.mdc`
+> Status: **v1 implemented** — behaviour and acceptance criteria are defined in the main specification.
 
 ---
 
-## Prerequisites
+### Overview
+
+- **Input**: A GnuCash book (gzip-compressed XML `.gnucash`), a directory of `.eml` emails, and a directory of receipt images.
+- **Goal**: Find transactions with splits to `Unspecified` / `Imbalance-GBP`, suggest better descriptions and categories, and let you approve or edit each one.
+- **How it works**:
+  - Reads the GnuCash file and identifies candidate transactions.
+  - Indexes emails and OCRs receipts.
+  - Uses ML (and optionally an LLM) to suggest descriptions/categories.
+  - Presents proposals **one transaction at a time** in a local web app.
+  - Applies only the changes you explicitly approve, with backups and rollback.
+
+For full domain rules, evidence rules, and LLM behaviour, see the **Specification** linked below.
+
+---
+
+### Prerequisites
 
 - Python **3.11+**
-- **Tesseract OCR** (system package):
+- **Tesseract OCR** (for receipt images):
   - Fedora: `sudo dnf install tesseract`
   - Ubuntu: `sudo apt install tesseract-ocr`
   - macOS: `brew install tesseract`
 
 ---
 
-## Installation
+### Installation
 
 ```bash
 cd /path/to/GnuCashUtils
@@ -42,23 +41,15 @@ pip install -U pip
 pip install -e ".[dev]"
 ```
 
+After installation, the `gnc-enrich` console script is available (equivalent to `python -m gnc_enrich`).
+
 ---
 
-## CLI commands
+### Core commands (user guide)
 
-After `pip install -e .`, the `gnc-enrich` console script is available (equivalent to `python -m gnc_enrich`).
+Global flag: `-v` / `--verbose` enables DEBUG-level logging for all subcommands.
 
-The project exposes three top-level commands:
-
-```bash
-gnc-enrich run ...
-gnc-enrich review ...
-gnc-enrich apply ...
-```
-
-Global flag: `-v` / `--verbose` enables DEBUG-level trace logging for all subcommands.
-
-### 1) `run` — build proposals from source data
+#### 1) `run` — build proposals from source data
 
 ```bash
 python -m gnc_enrich run \
@@ -66,28 +57,20 @@ python -m gnc_enrich run \
   --emails-dir /data/mail/eml \
   --receipts-dir /data/receipts/incoming \
   --processed-receipts-dir /data/receipts/processed \
-  --state-dir /data/gnc-enrich-state \
-  --date-window-days 7 \
-  --amount-tolerance 0.50 \
-  --llm-mode disabled
+  --state-dir /data/gnc-enrich-state
 ```
 
-Arguments:
+Key options:
 
-- `--gnucash-path` (required): Gzip-compressed XML GnuCash file.
-- `--emails-dir` (required): Directory of `.eml` files (scanned recursively, including subdirectories).
-- `--receipts-dir` (required): Directory of receipt images (`jpg|jpeg|png|heic|heif`).
-- `--processed-receipts-dir` (required): Destination for approved/matched receipts.
-- `--state-dir` (required): Index/proposal/audit state directory.
-- `--date-window-days` (default `7`): Evidence date window (±days).
-- `--amount-tolerance` (default `0.50`): Amount match tolerance in GBP.
-- `--include-skipped` (flag): Re-process previously skipped transactions.
-- `--llm-mode` (`disabled`|`offline`|`online`): LLM integration mode.
-- `--llm-endpoint`: LLM API endpoint URL.
-- `--llm-model`: LLM model name.
-- `--llm-use-web`: When using a local LLM, run web searches and inject snippets into the prompt for better category suggestions (requires `pip install duckduckgo-search` or `pip install -e ".[web]"`).
+- **`--gnucash-path`**: Gzip-compressed XML GnuCash file.
+- **`--emails-dir`**: Directory of `.eml` files (scanned recursively).
+- **`--receipts-dir`** / **`--processed-receipts-dir`**: Receipt images in, processed receipts out.
+- **`--state-dir`**: Directory for indexes, proposals, decisions, and audit.
+- **`--date-window-days`**, **`--amount-tolerance`**: Evidence matching controls.
+- **`--include-skipped`**: Re-process transactions previously skipped in review.
+- **LLM flags**: `--llm-mode`, `--llm-endpoint`, `--llm-model`, `--llm-use-web`, `--llm-timeout`, `--llm-extraction-endpoint`, `--llm-extraction-model` (see spec for detailed behaviour).
 
-### 2) `review` — launch local review application
+#### 2) `review` — launch local review application
 
 ```bash
 python -m gnc_enrich review \
@@ -96,15 +79,18 @@ python -m gnc_enrich review \
   --port 7860
 ```
 
-Opens a Flask web app at `http://127.0.0.1:7860` for one-by-one transaction review with evidence display, approve/edit/skip controls.
+Opens a Flask web app at `http://127.0.0.1:7860` for one-by-one review with:
 
-### 3) `apply` — write approved decisions
+- Queue view with **To categorise** and **Approved transactions** sections.
+- A transaction page showing the original transaction, ML suggestion, optional LLM suggestion, email and receipt evidence, and a decision form (approve / skip, with description and splits editable).
+
+#### 3) `apply` — write approved decisions
 
 ```bash
-# Dry-run (preview only)
+# Preview changes only (no write)
 python -m gnc_enrich apply --state-dir /data/gnc-enrich-state --dry-run
 
-# Apply with backup
+# Apply with backups written to a chosen directory
 python -m gnc_enrich apply \
   --state-dir /data/gnc-enrich-state \
   --create-backup \
@@ -112,16 +98,34 @@ python -m gnc_enrich apply \
   --in-place
 ```
 
-Arguments:
-- `--state-dir` (required): Proposal/decision/audit state directory.
-- `--dry-run` (flag): Generate a human-readable report without writing changes.
-- `--create-backup` (default: true): Create a timestamped backup before writing. Use `--no-backup` to skip.
-- `--backup-dir`: Backup destination directory (default: `<state-dir>/backups`).
-- `--in-place` (default: true): Apply changes directly to source GnuCash file. Use `--no-in-place` to write to a new file.
+Key options:
+
+- **`--dry-run`**: Generate a human-readable report and exit without writing.
+- **`--create-backup` / `--no-backup`**: Control backup creation (default: create).
+- **`--backup-dir`**: Where backups are written (default: `<state-dir>/backups`).
+- **`--in-place` / `--no-in-place`**: Modify the original GnuCash file or write a new one.
+- **`--backup-retention N`**: Keep at most N backups per book (default: unlimited).
+
+#### 4) `rollback` — restore from backup
+
+```bash
+# List available backups for a state directory
+python -m gnc_enrich rollback --state-dir /data/gnc-enrich-state --list-backups
+
+# Restore the most recent backup
+python -m gnc_enrich rollback --state-dir /data/gnc-enrich-state
+
+# Restore a specific backup file by name
+python -m gnc_enrich rollback \
+  --state-dir /data/gnc-enrich-state \
+  --backup books.20250101T120000Z.gnucash
+```
+
+If the state directory has never been through `run` (and thus has no `run_config.json`), `rollback` prints a clear error and exits with a non-zero code.
 
 ---
 
-## Example end-to-end session
+### Example end-to-end session
 
 ```bash
 # 1) Build candidate proposals from data sources
@@ -139,115 +143,80 @@ python -m gnc_enrich review --state-dir /finance/gnc-state
 python -m gnc_enrich apply --state-dir /finance/gnc-state --dry-run
 
 # 4) Apply only approved decisions with backup
-python -m gnc_enrich apply --state-dir /finance/gnc-state --create-backup --backup-dir /finance/backups --in-place
+python -m gnc_enrich apply \
+  --state-dir /finance/gnc-state \
+  --create-backup \
+  --backup-dir /finance/backups \
+  --in-place
 ```
 
 ---
 
-## Repository layout
+### LLM usage (high level)
+
+LLM integration is **optional** and **disabled by default**. At a high level:
+
+- During **run**, proposals are ML-only unless advanced configuration enables LLM use for low-confidence cases.
+- During **review**, the **“Check with LLM”** button can:
+  - Enrich terse email or receipt information (seller, items, order IDs).
+  - Suggest an improved description and category.
+- Receipt OCR can optionally fall back to an LLM when Tesseract fails to extract a total.
+
+For the full LLM interaction model (extraction vs category, cross-product of modes, and prompt templates), see the specification’s LLM section.
+
+---
+
+### Repository layout (for orientation)
 
 ```text
-.
-├── README.md
-├── pyproject.toml
-├── docs/
-│   ├── gnucash_email_receipt_categorization_spec.mdc
-│   ├── architecture_implementation_plan.mdc
-│   ├── developers_guide.mdc
-│   └── test_plan_and_strategy.mdc
-├── src/gnc_enrich/
-│   ├── __main__.py
-│   ├── cli.py                       # CLI entry points (run/review/apply)
-│   ├── config.py                    # Configuration dataclasses
-│   ├── domain/models.py             # Domain entities
-│   ├── gnucash/loader.py            # GnuCash XML parser and writer
-│   ├── email/parser.py              # .eml file parser
-│   ├── email/index.py               # Persistent email index (JSONL)
-│   ├── receipt/ocr.py               # Tesseract OCR + optional LLM fallback
-│   ├── receipt/repository.py        # Receipt file management
-│   ├── matching/email_matcher.py    # Email-to-transaction scoring
-│   ├── matching/receipt_matcher.py  # Receipt-to-transaction matching
-│   ├── ml/predictor.py              # ML category prediction + feedback
-│   ├── review/service.py            # Review queue management
-│   ├── review/webapp.py             # Flask web app
-│   ├── review/templates/            # Jinja2 HTML templates
-│   ├── apply/engine.py              # Apply, backup, rollback, audit
-│   ├── state/repository.py          # JSON/JSONL state persistence
-│   └── services/pipeline.py         # Pipeline orchestration
-└── tests/                           # 284 tests
-    ├── conftest.py                  # Shared fixtures
-    └── fixtures/emails/             # 13 synthetic .eml files in subdirectories
+src/gnc_enrich/
+  cli.py               # CLI: run / review / apply / rollback
+  config.py            # RunConfig, ApplyConfig, ReviewConfig, LlmConfig
+  domain/models.py     # Transactions, splits, evidence, proposals, decisions, audit
+  gnucash/loader.py    # GnuCash XML loader/writer
+  email/               # Email parser + index
+  receipt/             # Receipt OCR + repository
+  matching/            # Email and receipt matching
+  ml/                  # CategoryPredictor + FeedbackTrainer
+  review/              # Review service + Flask web app
+  apply/               # ApplyEngine (dry-run, apply, backup, rollback, audit)
+  state/               # JSON/JSONL state repository
+  services/pipeline.py # Run-phase orchestration
+docs/
+  gnucash_email_receipt_categorization_spec.mdc
+  developers_guide.mdc
+  test_plan_and_strategy.mdc
 ```
 
 ---
 
-## State artifacts
+### Documentation map (single source of truth)
 
-The `--state-dir` directory contains:
+- **Specification**: `docs/gnucash_email_receipt_categorization_spec.mdc`  
+  Full description of domain rules, inputs/outputs, components, evidence matching, LLM flows, and acceptance criteria.
 
-| File | Format | Purpose |
-|------|--------|---------|
-| `email_index.jsonl` | JSONL | Parsed email evidence |
-| `email_index_manifest.json` | JSON | Tracks indexed `.eml` filenames |
-| `proposals.json` | JSON | Generated proposals with evidence |
-| `decisions.jsonl` | JSONL | Review decisions (append-only) |
-| `skip_state.json` | JSON | Skipped transaction records |
-| `feedback_events.jsonl` | JSONL | User feedback for retraining |
-| `audit_log.jsonl` | JSONL | Complete audit trail |
-| `apply_journal.jsonl` | JSONL | Undo journal for rollback |
-| `run_config.json` | JSON | Metadata from last pipeline run |
+- **Developers guide**: `docs/developers_guide.mdc`  
+  Development environment, codebase structure, documentation and testing conventions, and how to keep the spec and tests in sync.
+
+- **Test plan & strategy**: `docs/test_plan_and_strategy.mdc`  
+  Test levels, test matrix, spec coverage mapping, and future testing enhancements.
+
+The README is intentionally an overview and user guide; when in doubt about behaviour, treat the **specification** as the source of truth.
 
 ---
 
-## Running tests
+### Running tests
 
 ```bash
-pytest              # all 288 tests
-pytest -v           # verbose
-pytest -k matching  # keyword filter
+pytest              # all tests
+pytest -k matching  # subset by keyword
 pytest tests/test_integration.py -v  # integration only
 ```
 
-See `docs/developers_guide.mdc` for full testing documentation.
+For full testing expectations and the current test matrix, see the developers guide and test plan.
 
 ---
 
-## LLM configuration
+### Licence
 
-The system supports optional LLM integration (disabled by default):
-
-```bash
-# Local LLM (e.g., Ollama)
-python -m gnc_enrich run --llm-mode offline \
-  --llm-endpoint http://localhost:11434/v1/chat/completions \
-  --llm-model llama3 ...
-
-# Remote LLM (e.g., OpenAI-compatible API)
-python -m gnc_enrich run --llm-mode online \
-  --llm-endpoint https://api.example.com/v1/chat/completions \
-  --llm-model gpt-4 ...
-```
-
-LLM is used for:
-1. **Receipt OCR fallback** when Tesseract fails to extract a total.
-2. **Category rationale** when ML classifier confidence is below 60%.
-
-When you run the pipeline, INFO logs confirm how the LLM was loaded:
-- **LLM enabled**: you will see `LLM enabled: mode=offline endpoint=http://... model=llama3` (or your endpoint/model). The pipeline then **tests the connection** with a minimal request; you will see `LLM connection OK` if the endpoint responds, or a warning if it fails (the run continues but LLM calls may fail later).
-- **LLM disabled**: you will see `LLM disabled; using ML/heuristics and OCR only`.
-
-During email indexing, the pipeline logs progress every **5000 processed emails** (e.g. `Processed 5000 emails`, `Processed 10000 emails`).
-
----
-
-## Troubleshooting
-
-- **`ModuleNotFoundError`**: Run `pip install -e ".[dev]"`
-- **Tesseract not found**: Install the system package (see Prerequisites)
-- **Bytecode clutter**: `make clean`
-
----
-
-## License
-
-This project is licensed under the [GNU General Public License v3.0](LICENSE.md).
+This project is licensed under the GNU General Public License v3.0. See `LICENSE.md` for details.

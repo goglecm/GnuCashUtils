@@ -39,6 +39,17 @@ def test_apply_command_dry_run() -> None:
     assert ns.create_backup is True
 
 
+def test_rollback_command_defaults() -> None:
+    parser = build_parser()
+    ns = parser.parse_args([
+        "rollback",
+        "--state-dir", "/tmp/state",
+    ])
+    assert ns.command == "rollback"
+    assert ns.backup == ""
+    assert ns.list_backups is False
+
+
 def test_run_command_with_llm() -> None:
     parser = build_parser()
     ns = parser.parse_args([

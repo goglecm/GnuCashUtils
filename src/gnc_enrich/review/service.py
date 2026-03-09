@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from datetime import date, datetime, timezone
+from decimal import Decimal
+from pathlib import Path
 
 from gnc_enrich.config import LlmConfig, LlmMode
-from gnc_enrich.domain.models import EmailEvidence, Proposal, ReceiptEvidence, ReviewDecision, SkipRecord
+from gnc_enrich.domain.models import (
+    EmailEvidence,
+    Proposal,
+    ReceiptEvidence,
+    ReviewDecision,
+    SkipRecord,
+    Split,
+    Transaction,
+)
 from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
+from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.state.repository import StateRepository
 
 logger = logging.getLogger(__name__)
@@ -39,6 +51,10 @@ class ReviewQueueService:
                 mode=LlmMode(meta.get("llm_mode", "disabled")),
                 endpoint=meta.get("llm_endpoint", ""),
                 model_name=meta.get("llm_model", ""),
+                use_web=meta.get("llm_use_web", False),
+                extraction_endpoint=meta.get("llm_extraction_endpoint", ""),
+                extraction_model=meta.get("llm_extraction_model", ""),
+                extraction_api_key=meta.get("llm_extraction_api_key", ""),
             )
         except (ValueError, KeyError):
             return LlmConfig()
@@ -75,11 +91,33 @@ class ReviewQueueService:
         return None
 
     def get_account_paths(self) -> list[str]:
-        """Return sorted list of GnuCash account paths for category dropdown (from last run)."""
+        """Return sorted list of GnuCash account paths for category dropdown.
+
+        Prefer re-loading from the GnuCash book on each call using the gnucash_path
+        from run_config metadata, falling back to cached account_paths metadata when
+        the book cannot be loaded.
+        """
+        run_meta = self._state.load_metadata("run_config")
+        gnucash_path = (run_meta or {}).get("gnucash_path")
+        if gnucash_path:
+            try:
+                loader = GnuCashLoader()
+                txs = loader.load_transactions(Path(gnucash_path))
+                # GnuCashLoader exposes account paths via its internal mapping after load.
+                account_paths = sorted({s.account_path for tx in txs for s in tx.splits})
+                if account_paths:
+                    return account_paths
+            except Exception:
+                logger.warning("Failed to reload account paths from GnuCash book", exc_info=True)
         meta = self._state.load_metadata("account_paths")
         if not meta or "paths" not in meta:
             return []
         return list(meta.get("paths", []))
+
+    @property
+    def llm_enabled(self) -> bool:
+        """Return True when the main LLM is configured for this review session."""
+        return self._llm_config.mode != LlmMode.DISABLED
 
     def all_proposals(self) -> list[Proposal]:
         return list(self._proposals)
@@ -119,10 +157,76 @@ class ReviewQueueService:
         decisions = self._state.load_decisions()
         return [d for d in decisions if d.action in ("approve", "edit")]
 
-    def get_email_category_hint(self, sender: str, subject: str, body: str) -> str:
-        """Suggest a category from email content (keyword heuristic) for UI hint."""
-        predictor = CategoryPredictor(llm_config=self._llm_config)
-        return predictor.suggest_category_from_email(sender, subject, body)
+    def get_email_category_hint(
+        self, sender: str, subject: str, body: str, account_paths: list[str] | None = None
+    ) -> str:
+        """Suggest a category from email content (keyword heuristic) for UI hint.
+        If account_paths is provided, may return a leaf from that list under the heuristic."""
+        predictor = CategoryPredictor(
+            llm_config=self._llm_config,
+            prompts_dir=self._state.state_dir / "prompts",
+        )
+        return predictor.suggest_category_from_email(sender, subject, body, account_paths)
+
+    def run_llm_check(
+        self, proposal_id: str, selected_email_ids: list[str] | None = None
+    ) -> dict | None:
+        """Run extraction + category LLM for this proposal; update and persist proposal; return result dict or None.
+        If selected_email_ids is provided, only those emails are used for the LLM; otherwise all matched emails are used.
+        Works with or without evidence: with emails uses per-email extraction then merge; without emails
+        uses extraction (or main) LLM on the transaction description to infer supplier/items, then category steps."""
+        try:
+            proposal = self.get_proposal(proposal_id)
+            if not proposal:
+                return None
+            if self._llm_config.mode == LlmMode.DISABLED:
+                return None
+            account_paths = self.get_account_paths()
+            if not account_paths:
+                return None
+            tx = Transaction(
+                tx_id=proposal.tx_id,
+                posted_date=proposal.tx_date or date.today(),
+                description=proposal.original_description,
+                currency="GBP",
+                amount=proposal.tx_amount or Decimal(0),
+            )
+            predictor = CategoryPredictor(
+                historical_transactions=[],
+                llm_config=self._llm_config,
+                prompts_dir=self._state.state_dir / "prompts",
+            )
+            all_emails = (proposal.evidence.emails if proposal.evidence else []) or []
+            if selected_email_ids is not None:
+                id_set = set(selected_email_ids)
+                emails = [e for e in all_emails if e.evidence_id in id_set]
+            else:
+                emails = all_emails
+            result = predictor.run_llm_check(
+                tx,
+                emails,
+                proposal.evidence.receipt if proposal.evidence else None,
+                account_paths,
+            )
+            if not result:
+                return None
+            # Update proposal with LLM result (do not overwrite ML suggested_description / suggested_splits)
+            updates: dict = {
+                "extraction_result": result.get("extraction"),
+                "llm_confidence": result.get("confidence", 0.0),
+                "llm_category": result.get("category") or "",
+                "llm_description": result.get("description") or "",
+            }
+            updated = dataclasses.replace(proposal, **updates)
+            for i, p in enumerate(self._proposals):
+                if p.proposal_id == proposal_id:
+                    self._proposals[i] = updated
+                    break
+            self._state.save_proposals(self._proposals)
+            return result
+        except Exception:
+            logger.warning("run_llm_check failed for proposal %s", proposal_id, exc_info=True)
+            return None
 
     def submit_decision(self, decision: ReviewDecision) -> None:
         """Persist a review decision and update internal state."""
@@ -141,7 +245,10 @@ class ReviewQueueService:
         if decision.action in ("approve", "edit") and (
             decision.approved_email_ids or decision.approved_receipt
         ):
-            decision = self._enrich_from_approved_evidence(decision)
+            try:
+                decision = self._enrich_from_approved_evidence(decision)
+            except Exception:
+                logger.warning("Evidence enrichment failed for tx %s; saving un-enriched decision", decision.tx_id, exc_info=True)
 
         self._state.save_decision(decision)
         self._decided_ids.add(decision.tx_id)
@@ -181,7 +288,10 @@ class ReviewQueueService:
         if not approved_emails and not approved_receipt:
             return decision
 
-        predictor = CategoryPredictor(llm_config=self._llm_config)
+        predictor = CategoryPredictor(
+            llm_config=self._llm_config,
+            prompts_dir=self._state.state_dir / "prompts",
+        )
 
         if approved_receipt and approved_receipt.line_items:
             from copy import deepcopy

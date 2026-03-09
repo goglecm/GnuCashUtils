@@ -138,6 +138,21 @@ class TestDryRun:
         assert "tx_unspec2" in content
         assert "tx_imbalance1" in content
 
+    def test_dry_run_report_with_no_decisions(self, tmp_path: Path) -> None:
+        """generate_dry_run_report with no decisions still writes report (0 approved, 0 skipped)."""
+        gnucash = tmp_path / "book.gnucash"
+        with gzip.open(gnucash, "wb") as f:
+            f.write(SAMPLE_GNUCASH_XML.encode("utf-8"))
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(gnucash)})
+        state.save_proposals([])
+        report = ApplyEngine().generate_dry_run_report(state_dir)
+        content = report.read_text()
+        assert "DRY-RUN REPORT" in content
+        assert "0 approved" in content or "Summary" in content
+
 
 class TestApply:
 
@@ -188,8 +203,8 @@ class TestApply:
         assert len(audit) == 3
         assert audit[0].action in ("approve", "edit")
 
-    def test_apply_transfer_only_updates_description(self, tmp_path: Path) -> None:
-        """Transfers: apply updates description only; splits are never modified."""
+    def test_apply_transfer_updates_splits_like_other_transactions(self, tmp_path: Path) -> None:
+        """Transfers with proposals/decisions are treated like any other transaction: description and splits follow the decision."""
         gnucash, state_dir = _setup_state(tmp_path)
         engine = ApplyEngine()
         engine.apply(state_dir)
@@ -199,10 +214,9 @@ class TestApply:
         tx_map = {t.tx_id: t for t in txs}
         transfer = tx_map["tx_transfer"]
         assert transfer.description == "Transfer to Savings 25/01/2025"
+        # Decision in _setup_state sets a single Expenses:Miscellaneous split; writer rewrites splits accordingly.
         split_paths = {sp.account_path for sp in transfer.splits}
-        assert "Current Account" in split_paths
-        assert "Savings Account" in split_paths
-        assert "Expenses:Miscellaneous" not in split_paths
+        assert "Expenses:Miscellaneous" in split_paths
 
     def test_journal_stores_original_description(self, tmp_path: Path) -> None:
         _, state_dir = _setup_state(tmp_path)
@@ -334,6 +348,23 @@ class TestApply:
         with pytest.raises(RuntimeError, match="No run_config"):
             engine.apply(state_dir)
 
+    def test_apply_raises_when_gnucash_has_no_book(self, tmp_path: Path) -> None:
+        """When the GnuCash file has no <gnc:book>, apply raises (invalid file)."""
+        invalid = tmp_path / "invalid.gnucash"
+        invalid.write_text('<?xml version="1.0"?><root><other/></root>', encoding="utf-8")
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(invalid)})
+        state.save_proposals([])
+        state.save_decision(ReviewDecision(
+            tx_id="tx1", action="approve",
+            final_description="Desc", final_splits=[Split(account_path="Expenses:Food", amount=Decimal("10.00"))],
+        ))
+        engine = ApplyEngine()
+        with pytest.raises(ValueError, match="gnc:book|No.*book"):
+            engine.apply(state_dir)
+
 
 class TestRollback:
 
@@ -364,3 +395,74 @@ class TestRollback:
         engine = ApplyEngine()
         with pytest.raises(RuntimeError, match="No backup"):
             engine.rollback(state_dir)
+
+    def test_rollback_raises_when_backup_dir_empty(self, tmp_path: Path) -> None:
+        """When backup directory exists but has no matching backup files, rollback raises."""
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / "backups").mkdir()
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(tmp_path / "book.gnucash")})
+        engine = ApplyEngine()
+        with pytest.raises(RuntimeError, match="No backup files found"):
+            engine.rollback(state_dir)
+
+    def test_rollback_with_specific_backup_name(self, tmp_path: Path) -> None:
+        """Rollback honours an explicit backup filename when provided."""
+        # Create original book and run_config metadata
+        gnucash = tmp_path / "book.gnucash"
+        with gzip.open(gnucash, "wb") as f:
+            f.write(SAMPLE_GNUCASH_XML.encode("utf-8"))
+        state_dir = tmp_path / "state"
+        state = StateRepository(state_dir)
+        state.save_metadata("run_config", {"gnucash_path": str(gnucash)})
+
+        backup_dir = state_dir / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create a backup using the real writer
+        from gnc_enrich.gnucash.loader import GnuCashWriter
+
+        writer = GnuCashWriter()
+        # Backup of the original SAMPLE_GNUCASH_XML
+        backup1 = writer.create_backup(gnucash, backup_dir)
+        original_bytes = backup1.read_bytes()
+
+        # Mutate the book file so we can see rollback effect clearly
+        gnucash.write_bytes(SAMPLE_GNUCASH_XML.encode("utf-8") + b"<!-- modified -->")
+        assert gnucash.read_bytes() != original_bytes
+
+        # Roll back explicitly to the first backup by name
+        engine = ApplyEngine()
+        engine.rollback(state_dir, backup_name=backup1.name)
+
+        # The restored file should match the first backup's contents exactly
+        assert gnucash.read_bytes() == original_bytes
+
+
+class TestBackupRetention:
+
+    def test_prune_backups_keeps_most_recent_n(self, tmp_path: Path) -> None:
+        """_prune_backups keeps at most N backups and deletes the oldest ones."""
+        gnucash = tmp_path / "book.gnucash"
+        gnucash.write_text("dummy", encoding="utf-8")
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create four fake backups with lexicographically increasing timestamps
+        stem = gnucash.stem
+        suffix = gnucash.suffix
+        names = [
+            f"{stem}.20250101T120000Z{suffix}",
+            f"{stem}.20250102T120000Z{suffix}",
+            f"{stem}.20250103T120000Z{suffix}",
+            f"{stem}.20250104T120000Z{suffix}",
+        ]
+        for name in names:
+            (backup_dir / name).write_text(name, encoding="utf-8")
+
+        engine = ApplyEngine()
+        engine._prune_backups(gnucash, backup_dir, retention=2)
+
+        remaining = sorted(p.name for p in backup_dir.glob(f"{stem}.*{suffix}"))
+        assert remaining == names[-2:]

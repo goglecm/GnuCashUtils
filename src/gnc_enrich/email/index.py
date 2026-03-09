@@ -80,8 +80,11 @@ class EmailIndexRepository:
         self._indexed_files.clear()
 
         if manifest_path.exists():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self._indexed_files = set(manifest.get("indexed_files", []))
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                self._indexed_files = set(manifest.get("indexed_files", []))
+            except json.JSONDecodeError:
+                logger.warning("Corrupt email index manifest %s; starting with empty indexed set", manifest_path)
 
         if index_path.exists():
             for lineno, line in enumerate(index_path.read_text(encoding="utf-8").splitlines(), 1):
@@ -94,7 +97,11 @@ class EmailIndexRepository:
                     continue
                 if "_schema_version" in d:
                     continue
-                ev = _deserialize_evidence(d)
+                try:
+                    ev = _deserialize_evidence(d)
+                except (KeyError, TypeError, ValueError):
+                    logger.warning("Skipping invalid email index line %d in %s", lineno, index_path)
+                    continue
                 ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
                 if min_date is not None and ev_date < min_date:
                     continue

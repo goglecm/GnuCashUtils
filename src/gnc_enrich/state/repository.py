@@ -142,6 +142,17 @@ def _parse_evidence_packet(d: dict | None) -> EvidencePacket | None:
     )
 
 
+def _sanitize_extraction_result(extraction: dict | None) -> dict | None:
+    """Ensure extraction['items'] contains only dicts (legacy state may have list/other types)."""
+    if not extraction or not isinstance(extraction, dict):
+        return extraction
+    raw = extraction.get("items")
+    if isinstance(raw, list):
+        extraction = dict(extraction)
+        extraction["items"] = [x for x in raw if isinstance(x, dict)]
+    return extraction
+
+
 def _parse_proposal(d: dict) -> Proposal:
     tx_date_raw = d.get("tx_date")
     return Proposal(
@@ -158,6 +169,10 @@ def _parse_proposal(d: dict) -> Proposal:
         original_splits=[_parse_split(s) for s in d.get("original_splits", [])],
         confidence_breakdown=d.get("confidence_breakdown", []),
         is_transfer=d.get("is_transfer", False),
+        llm_confidence=float(d["llm_confidence"]) if d.get("llm_confidence") is not None else None,
+        llm_category=d.get("llm_category"),
+        llm_description=d.get("llm_description"),
+        extraction_result=_sanitize_extraction_result(d.get("extraction_result")),
     )
 
 
@@ -236,7 +251,20 @@ class StateRepository:
         except json.JSONDecodeError:
             logger.warning("Corrupt proposals file %s; returning empty list", self._proposals_path)
             return []
-        return [_parse_proposal(p) for p in raw.get("proposals", [])]
+        if not isinstance(raw, dict):
+            logger.warning(
+                "Proposals file %s root is not a dict; returning empty list",
+                self._proposals_path,
+            )
+            return []
+        result: list[Proposal] = []
+        for i, p in enumerate(raw.get("proposals", [])):
+            try:
+                result.append(_parse_proposal(p))
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning("Skipping invalid proposal at index %d: %s", i, e)
+                continue
+        return result
 
     # -- decisions ------------------------------------------------------------
 
@@ -262,7 +290,11 @@ class StateRepository:
                 continue
             if "_schema_version" in d:
                 continue
-            results.append(_parse_decision(d))
+            try:
+                results.append(_parse_decision(d))
+            except (KeyError, TypeError, ValueError):
+                logger.warning("Skipping invalid decision at line %d in %s", lineno, self._decisions_path)
+                continue
         return results
 
     # -- skips ----------------------------------------------------------------
@@ -283,8 +315,25 @@ class StateRepository:
     def _load_skip_records(self) -> list[SkipRecord]:
         if not self._skips_path.exists():
             return []
-        raw = json.loads(self._skips_path.read_text(encoding="utf-8"))
-        return [_parse_skip(s) for s in raw.get("skips", [])]
+        try:
+            raw = json.loads(self._skips_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            logger.warning("Corrupt skip state file %s; returning empty list", self._skips_path)
+            return []
+        if not isinstance(raw, dict):
+            logger.warning(
+                "Skip state file %s root is not a dict; returning empty list",
+                self._skips_path,
+            )
+            return []
+        result: list[SkipRecord] = []
+        for s in raw.get("skips", []):
+            try:
+                result.append(_parse_skip(s))
+            except (KeyError, TypeError, ValueError):
+                logger.debug("Skipping invalid skip record: %s", s)
+                continue
+        return result
 
     def load_skipped_ids(self) -> set[str]:
         """Return the set of transaction IDs that have been skipped."""
@@ -313,18 +362,22 @@ class StateRepository:
                 continue
             if "_schema_version" in d:
                 continue
-            results.append(AuditEntry(
-                entry_id=d["entry_id"],
-                tx_id=d["tx_id"],
-                action=d["action"],
-                proposed_description=d["proposed_description"],
-                proposed_splits=[_parse_split(s) for s in d["proposed_splits"]],
-                final_description=d["final_description"],
-                final_splits=[_parse_split(s) for s in d["final_splits"]],
-                confidence=float(d["confidence"]),
-                evidence_ids=d.get("evidence_ids", []),
-                timestamp=_parse_datetime(d.get("timestamp")),
-            ))
+            try:
+                results.append(AuditEntry(
+                    entry_id=d["entry_id"],
+                    tx_id=d["tx_id"],
+                    action=d["action"],
+                    proposed_description=d["proposed_description"],
+                    proposed_splits=[_parse_split(s) for s in d["proposed_splits"]],
+                    final_description=d["final_description"],
+                    final_splits=[_parse_split(s) for s in d["final_splits"]],
+                    confidence=float(d["confidence"]),
+                    evidence_ids=d.get("evidence_ids", []),
+                    timestamp=_parse_datetime(d.get("timestamp")),
+                ))
+            except (KeyError, TypeError, ValueError):
+                logger.warning("Skipping invalid audit entry at line %d in %s", lineno, self._audit_path)
+                continue
         return results
 
     # -- feedback -------------------------------------------------------------
@@ -368,8 +421,13 @@ class StateRepository:
         path.write_text(json.dumps(wrapped, cls=_Encoder, indent=2), encoding="utf-8")
 
     def load_metadata(self, key: str) -> dict | None:
-        """Load keyed metadata JSON (e.g. run_config)."""
+        """Load keyed metadata JSON (e.g. run_config). Returns None if file missing or corrupt."""
         path = self._dir / f"{key}.json"
         if not path.exists():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else None
+        except json.JSONDecodeError:
+            logger.warning("Corrupt metadata file %s; returning None", path)
+            return None

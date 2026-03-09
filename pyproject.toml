@@ -28,9 +28,12 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+gnc_enrich = ["prompts/*.txt"]
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-web = ["duckduckgo-search"]
+web = ["ddgs"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

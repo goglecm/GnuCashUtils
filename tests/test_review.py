@@ -1,13 +1,14 @@
 """Tests for ReviewQueueService and Flask review web app."""
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from gnc_enrich.config import ReviewConfig
-from gnc_enrich.domain.models import Proposal, ReviewDecision, Split
+from gnc_enrich.domain.models import EmailEvidence, EvidencePacket, Proposal, ReviewDecision, Split
 from gnc_enrich.review.service import ReviewQueueService
 from gnc_enrich.review.webapp import ReviewWebApp, create_app
 from gnc_enrich.state.repository import StateRepository
@@ -158,6 +159,35 @@ class TestReviewQueueService:
         assert "Expenses:Food" in paths
         assert "Current Account" in paths
 
+    def test_submit_decision_saves_unenriched_when_enrichment_raises(self, tmp_path: Path) -> None:
+        """When _enrich_from_approved_evidence raises, submit_decision still saves the decision (non-fatal)."""
+        state = StateRepository(tmp_path)
+        email_ev = EmailEvidence(
+            evidence_id="em1", message_id="<m@x>", sender="shop@co.uk",
+            subject="Order", sent_at=datetime(2025, 2, 1, tzinfo=timezone.utc), body_snippet="Order for Widget",
+            parsed_amounts=[Decimal("9.99")], full_body="Widget order",
+        )
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="Payment 01/02/2025", suggested_splits=[],
+            confidence=0.8, rationale="ML",
+            evidence=EvidencePacket(tx_id="tx1", emails=[email_ev], receipt=None, similar_transactions=[]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        decision = ReviewDecision(
+            tx_id="tx1", action="approve",
+            final_description="User entered description",
+            final_splits=[], decided_at=None,
+            approved_email_ids=["em1"], approved_receipt=False,
+        )
+        with patch.object(svc, "_enrich_from_approved_evidence", side_effect=RuntimeError("Enrichment failed")):
+            svc.submit_decision(decision)
+        decisions = state.load_decisions()
+        assert len(decisions) == 1
+        assert decisions[0].final_description == "User entered description"
+        assert svc.is_decided("tx1")
+
 
 # -- Flask web app ------------------------------------------------------------
 
@@ -186,15 +216,18 @@ class TestReviewWebApp:
         assert "Tesco 15/01/2025" in html
         assert "85%" in html
 
-    def test_review_page_shows_before_after(self, client) -> None:
+    def test_review_page_shows_transaction_and_ml_llm_sections(self, client) -> None:
+        """Review page shows Transaction, ML proposal, LLM section, and Use ML/Use LLM decision buttons per spec."""
         resp = client.get("/review/p1")
         html = resp.data.decode()
-        assert "ORIGINAL" in html
-        assert "PROPOSED" in html
+        assert "Transaction" in html
+        assert "ML proposal" in html
         assert "TESCO STORES" in html
         assert "Tesco 15/01/2025" in html
         assert "Imbalance-GBP" in html
         assert "Expenses:Food" in html
+        assert "Use ML proposal" in html
+        assert "Use LLM proposal" in html
 
     def test_review_page_has_select_all_button(self, client) -> None:
         resp = client.get("/review/p1")
@@ -307,17 +340,108 @@ class TestReviewWebApp:
             html = resp2.data.decode()
             assert "Previous" in html or "Next" in html
 
-    def test_queue_shows_expense_transfer_approved_sections(self, client) -> None:
+    def test_queue_shows_to_categorise_and_approved_sections(self, client) -> None:
         resp = client.get("/queue")
         assert resp.status_code == 200
         html = resp.data.decode()
+        # Queue shows a section for candidates ("To categorise") and one for approved transactions.
         assert "To categorise" in html or "expenses" in html.lower()
-        assert "transfer" in html.lower()
-        assert "Approved" in html
+        assert "Approved transactions" in html
+
+    def test_llm_button_hidden_when_llm_disabled(self, tmp_path: Path) -> None:
+        """When LLM mode is disabled in metadata, the Check with LLM button is not shown."""
+        state = StateRepository(tmp_path)
+        _seed_proposals(state)
+        # No run_config metadata saved → llm_mode defaults to disabled.
+        svc = ReviewQueueService(state)
+        app = create_app(svc)
+        app.config["TESTING"] = True
+        client = app.test_client()
+        resp = client.get("/review/p1")
+        html = resp.data.decode()
+        # The LLM section's JavaScript always mentions 'btn-llm-check', so we check
+        # specifically for the presence of the button element, not the string.
+        assert 'id="btn-llm-check"' not in html
+
+    def test_llm_button_hidden_when_no_description_emails_or_receipt(self, tmp_path: Path) -> None:
+        """When there is no description, no emails, and no receipt, the LLM button is hidden even if LLM is enabled."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("run_config", {"llm_mode": "online", "llm_endpoint": "http://x", "llm_model": "y"})
+        prop = Proposal(
+            proposal_id="p1",
+            tx_id="tx1",
+            suggested_description="",
+            suggested_splits=[Split(account_path="Expenses:Misc", amount=Decimal("10.00"))],
+            confidence=0.5,
+            rationale="ML",
+            tx_date=date(2025, 1, 15),
+            tx_amount=Decimal("10.00"),
+            original_description="",
+            original_splits=[],
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        app = create_app(svc)
+        app.config["TESTING"] = True
+        client = app.test_client()
+        resp = client.get("/review/p1")
+        html = resp.data.decode()
+        assert 'id="btn-llm-check"' not in html
+
+    def test_llm_button_shown_when_llm_enabled_and_description_present(self, tmp_path: Path) -> None:
+        """When LLM is enabled and there is a description (or evidence), the Check with LLM button is shown."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("run_config", {"llm_mode": "online", "llm_endpoint": "http://x", "llm_model": "y"})
+        prop = Proposal(
+            proposal_id="p1",
+            tx_id="tx1",
+            suggested_description="ML description",
+            suggested_splits=[Split(account_path="Expenses:Misc", amount=Decimal("10.00"))],
+            confidence=0.5,
+            rationale="ML",
+            tx_date=date(2025, 1, 15),
+            tx_amount=Decimal("10.00"),
+            original_description="Some description",
+            original_splits=[],
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        app = create_app(svc)
+        app.config["TESTING"] = True
+        client = app.test_client()
+        resp = client.get("/review/p1")
+        html = resp.data.decode()
+        assert 'id="btn-llm-check"' in html
 
     def test_nonexistent_proposal_redirects(self, client) -> None:
         resp = client.get("/review/nonexistent", follow_redirects=False)
         assert resp.status_code == 302
+
+    def test_review_page_200_with_empty_emails_when_display_build_raises(self, tmp_path: Path) -> None:
+        """When get_emails_for_display or category hint raises, review page returns 200 with empty emails (non-fatal)."""
+        state = StateRepository(tmp_path)
+        email_ev = EmailEvidence(
+            evidence_id="em1", message_id="<m@x>", sender="a@b.com",
+            subject="Test", sent_at=datetime(2025, 2, 1, tzinfo=timezone.utc), body_snippet="Body",
+            parsed_amounts=[Decimal("10.00")], full_body="Full",
+        )
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="Pay", suggested_splits=[],
+            confidence=0.8, rationale="r",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO", original_splits=[],
+            evidence=EvidencePacket(tx_id="tx1", emails=[email_ev]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        app = create_app(svc)
+        app.config["TESTING"] = True
+        client = app.test_client()
+        with patch("gnc_enrich.review.webapp.CategoryPredictor.get_emails_for_display", side_effect=ValueError("Display error")):
+            resp = client.get("/review/p1")
+        assert resp.status_code == 200
+        assert b"tx1" in resp.data
 
     def test_webapp_class_creates_app(self, tmp_path: Path) -> None:
         state = StateRepository(tmp_path)
@@ -327,3 +451,206 @@ class TestReviewWebApp:
         webapp = ReviewWebApp(svc, config)
         app = webapp.get_app()
         assert app is not None
+
+    def test_llm_check_endpoint_404_for_missing_proposal(self, client) -> None:
+        resp = client.post("/review/nonexistent-id/llm-check")
+        assert resp.status_code == 404
+        data = resp.get_json()
+        assert data is not None and data.get("ok") is False
+
+    def test_llm_check_endpoint_400_when_llm_fails(self, client) -> None:
+        """When run_llm_check returns None (LLM disabled or flow failed), API returns 400."""
+        resp = client.post("/review/p1/llm-check")
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data is not None and data.get("ok") is False
+
+    def test_llm_check_returns_200_with_null_extraction_when_serialize_raises(self, tmp_path: Path) -> None:
+        """When _serialize_extraction_for_json raises, llm-check returns 200 with extraction: null (non-fatal)."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("account_paths", {"paths": ["Expenses:Food"]})
+        state.save_metadata("run_config", {"llm_mode": "online", "llm_endpoint": "http://x", "llm_model": "y"})
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="ML", suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            confidence=0.8, rationale="ML",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO", original_splits=[],
+            evidence=EvidencePacket(tx_id="tx1", emails=[]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        with patch("gnc_enrich.review.service.CategoryPredictor") as MockPredictor:
+            mock_instance = MockPredictor.return_value
+            mock_instance.run_llm_check.return_value = {
+                "extraction": {"seller_name": "Tesco", "items": []},
+                "category": "Expenses:Food",
+                "description": "Tesco",
+                "confidence": 0.9,
+            }
+            app = create_app(svc)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            with patch("gnc_enrich.review.webapp._serialize_extraction_for_json", side_effect=TypeError("Bad type")):
+                resp = client.post("/review/p1/llm-check")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data is not None and data.get("ok") is True
+        assert data.get("extraction") is None
+        assert data.get("category") == "Expenses:Food"
+
+    def test_run_llm_check_updates_proposal_llm_fields_preserves_ml(self, tmp_path: Path) -> None:
+        """run_llm_check updates proposal with llm_* and extraction_result; does not overwrite suggested_description/suggested_splits."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("account_paths", {"paths": ["Expenses:Food", "Expenses:Miscellaneous"]})
+        state.save_metadata("run_config", {"llm_mode": "online", "llm_endpoint": "http://x", "llm_model": "y"})
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="ML description",
+            suggested_splits=[Split(account_path="Expenses:Miscellaneous", amount=Decimal("25.00"))],
+            confidence=0.5, rationale="ML",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO", original_splits=[],
+            evidence=EvidencePacket(tx_id="tx1", emails=[]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        with patch("gnc_enrich.review.service.CategoryPredictor") as MockPredictor:
+            mock_instance = MockPredictor.return_value
+            mock_instance.run_llm_check.return_value = {
+                "extraction": {"seller_name": "Tesco", "items": []},
+                "category": "Expenses:Food",
+                "description": "LLM description",
+                "confidence": 0.8,
+            }
+            result = svc.run_llm_check("p1")
+        assert result is not None
+        assert result["category"] == "Expenses:Food"
+        updated = svc.get_proposal("p1")
+        assert updated is not None
+        assert updated.llm_category == "Expenses:Food"
+        assert updated.llm_description == "LLM description"
+        assert updated.llm_confidence == 0.8
+        assert updated.extraction_result is not None
+        assert updated.suggested_description == "ML description"
+        assert updated.suggested_splits[0].account_path == "Expenses:Miscellaneous"
+
+    def test_run_llm_check_returns_none_does_not_update_proposal(self, tmp_path: Path) -> None:
+        """When run_llm_check returns None (flow failed or disabled), proposal is not updated and service returns None."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("account_paths", {"paths": ["Expenses:Food"]})
+        state.save_metadata("run_config", {"llm_mode": "online", "llm_endpoint": "http://x", "llm_model": "y"})
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="ML only",
+            suggested_splits=[Split(account_path="Expenses:Miscellaneous", amount=Decimal("25.00"))],
+            confidence=0.5, rationale="ML",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO", original_splits=[],
+            evidence=EvidencePacket(tx_id="tx1", emails=[]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        with patch("gnc_enrich.review.service.CategoryPredictor") as MockPredictor:
+            mock_instance = MockPredictor.return_value
+            mock_instance.run_llm_check.return_value = None
+            result = svc.run_llm_check("p1")
+        assert result is None
+        updated = svc.get_proposal("p1")
+        assert updated is not None
+        assert updated.llm_category is None
+        assert updated.llm_description is None
+        assert updated.extraction_result is None
+        assert updated.suggested_description == "ML only"
+
+    def test_llm_check_api_returns_200_with_serialized_extraction(self, tmp_path: Path) -> None:
+        """POST llm-check returns 200 with extraction serialized for JSON (Decimal -> str in items)."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("account_paths", {"paths": ["Expenses:Food"]})
+        state.save_metadata("run_config", {"llm_mode": "online", "llm_endpoint": "http://x", "llm_model": "y"})
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="ML",
+            suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            confidence=0.8, rationale="ML",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO", original_splits=[],
+            evidence=EvidencePacket(tx_id="tx1", emails=[]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        with patch("gnc_enrich.review.service.CategoryPredictor") as MockPredictor:
+            mock_instance = MockPredictor.return_value
+            mock_instance.run_llm_check.return_value = {
+                "extraction": {"seller_name": "Tesco", "items": [{"description": "Bread", "amount": Decimal("3.50")}]},
+                "category": "Expenses:Food",
+                "description": "Tesco Bread",
+                "confidence": 0.9,
+            }
+            app = create_app(svc)
+            app.config["TESTING"] = True
+            client = app.test_client()
+            resp = client.post("/review/p1/llm-check")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data is not None and data.get("ok") is True
+        assert data.get("category") == "Expenses:Food"
+        ext = data.get("extraction")
+        assert ext is not None
+        assert ext.get("seller_name") == "Tesco"
+        items = ext.get("items") or []
+        assert len(items) == 1
+        assert items[0].get("amount") == "3.50"
+
+    def test_run_llm_check_exception_returns_none(self, tmp_path: Path) -> None:
+        """When run_llm_check raises (e.g. network error), service returns None and proposal is not updated."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("account_paths", {"paths": ["Expenses:Food"]})
+        state.save_metadata("run_config", {"llm_mode": "online", "llm_endpoint": "http://x", "llm_model": "y"})
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="ML",
+            suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            confidence=0.8, rationale="ML",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO", original_splits=[],
+            evidence=EvidencePacket(tx_id="tx1", emails=[]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        with patch("gnc_enrich.review.service.CategoryPredictor") as MockPredictor:
+            mock_instance = MockPredictor.return_value
+            mock_instance.run_llm_check.side_effect = RuntimeError("Network error")
+            result = svc.run_llm_check("p1")
+        assert result is None
+        updated = svc.get_proposal("p1")
+        assert updated is not None and updated.llm_category is None
+
+    def test_decide_returns_503_when_save_fails(self, tmp_path: Path) -> None:
+        """When submit_decision raises, decide route returns 503 with error message."""
+        state = StateRepository(tmp_path)
+        _seed_proposals(state)
+        svc = ReviewQueueService(state)
+        app = create_app(svc)
+        app.config["TESTING"] = True
+        client = app.test_client()
+        with patch.object(svc, "submit_decision", side_effect=OSError("Disk full")):
+            resp = client.post("/review/p1/decide", data={
+                "action": "approve",
+                "description": "Tesco 15/01/2025",
+                "split_path": "Expenses:Food",
+                "split_amount": "25.00",
+            })
+        assert resp.status_code == 503
+        assert b"Failed to save" in resp.data
+
+    def test_decide_invalid_action_returns_400(self, client) -> None:
+        """When POST action is invalid, decide returns 400 with error message (non-fatal)."""
+        resp = client.post("/review/p1/decide", data={
+            "action": "invalid_action",
+            "description": "Tesco",
+            "split_path": "Expenses:Food",
+            "split_amount": "25.00",
+        })
+        assert resp.status_code == 400
+        assert b"Invalid review action" in resp.data or b"invalid_action" in resp.data

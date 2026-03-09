@@ -104,6 +104,8 @@ class ReceiptOcrEngine:
         if (
             self._llm_config
             and self._llm_config.mode != LlmMode.DISABLED
+            and self._llm_config.endpoint
+            and self._llm_config.model_name
             and parsed_total is None
         ):
             evidence = self._try_llm_fallback(evidence, receipt_path)
@@ -140,7 +142,7 @@ class ReceiptOcrEngine:
                 self._llm_config.endpoint,
                 json=payload,
                 headers=headers,
-                timeout=30,
+                timeout=self._llm_config.timeout_seconds,
             )
             resp.raise_for_status()
             import json
@@ -149,11 +151,20 @@ class ReceiptOcrEngine:
             data = json.loads(content)
             if "total" in data and data["total"]:
                 evidence.parsed_total = Decimal(str(data["total"]))
-            if "items" in data:
-                evidence.line_items = [
-                    LineItem(description=it["description"], amount=Decimal(str(it["amount"])))
-                    for it in data["items"]
-                ]
+            if "items" in data and isinstance(data["items"], list):
+                evidence.line_items = []
+                for it in data["items"]:
+                    if not isinstance(it, dict):
+                        continue
+                    try:
+                        desc = it.get("description") or ""
+                        amt = it.get("amount")
+                        if amt is not None:
+                            evidence.line_items.append(
+                                LineItem(description=str(desc), amount=Decimal(str(amt)))
+                            )
+                    except (InvalidOperation, ValueError, TypeError):
+                        continue
         except Exception:
             logger.warning("LLM fallback failed for %s", receipt_path, exc_info=True)
 

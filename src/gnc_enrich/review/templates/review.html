@@ -21,117 +21,104 @@
     </div>
 </nav>
 
-{# ── Before / After comparison ── #}
+{# ── Original transaction ── #}
 <div class="card">
-    <h2>Transaction &mdash; Before &amp; After</h2>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-        {# BEFORE #}
-        <div style="background:var(--bg);border-radius:6px;padding:0.75rem;">
-            <div style="font-weight:700;margin-bottom:0.5rem;color:var(--muted);font-size:0.85rem;">ORIGINAL</div>
-            <div class="field">
-                <label>Date</label>
-                <div class="value">{{ proposal.tx_date.strftime('%d/%m/%Y') if proposal.tx_date else '—' }}</div>
-            </div>
-            <div class="field">
-                <label>Amount</label>
-                <div class="value amount">{% if proposal.tx_amount is not none %}&pound;{{ proposal.tx_amount }}{% else %}&mdash;{% endif %}</div>
-            </div>
-            <div class="field">
-                <label>Description</label>
-                <div class="value">{{ proposal.original_description or '—' }}</div>
-            </div>
-            {% if proposal.original_splits %}
-            <div class="field">
-                <label>Splits</label>
-                {% for s in proposal.original_splits %}
-                <div style="font-size:0.9rem;">
-                    {{ s.account_path }} <span class="amount">&pound;{{ s.amount }}</span>
-                    {% if s.memo %}<span style="color:var(--muted);font-size:0.8rem;"> memo: {{ s.memo }}</span>{% endif %}
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
+    <h2>Transaction</h2>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;" title="The bank transaction as it appears in GnuCash (date, amount, description, splits).">Original transaction from your GnuCash file.</p>
+    <div style="background:var(--bg);border-radius:6px;padding:0.75rem;">
+        <div class="field"><label>Date</label><div class="value">{{ proposal.tx_date.strftime('%d/%m/%Y') if proposal.tx_date else '—' }}</div></div>
+        <div class="field"><label>Amount</label><div class="value amount">{% if proposal.tx_amount is not none %}&pound;{{ proposal.tx_amount | money }}{% else %}&mdash;{% endif %}</div></div>
+        <div class="field"><label>Description</label><div class="value">{{ proposal.original_description or '—' }}</div></div>
+        {% if proposal.original_splits %}
+        <div class="field"><label>Splits</label>
+            {% for s in proposal.original_splits %}
+            <div style="font-size:0.9rem;">{{ s.account_path }} <span class="amount">&pound;{{ s.amount }}</span>{% if s.memo %} <span style="color:var(--muted);font-size:0.8rem;">memo: {{ s.memo }}</span>{% endif %}</div>
+            {% endfor %}
         </div>
-
-        {# AFTER (proposed) #}
-        <div style="background:#f0faf0;border-radius:6px;padding:0.75rem;">
-            <div style="font-weight:700;margin-bottom:0.5rem;color:var(--success);font-size:0.85rem;">PROPOSED</div>
-            <div class="field">
-                <label>Description</label>
-                <div class="value">{{ proposal.suggested_description }}</div>
-            </div>
-            <div class="field">
-                <label>Splits</label>
-                {% for s in proposal.suggested_splits %}
-                <div style="font-size:0.9rem;">
-                    {{ s.account_path }} <span class="amount">&pound;{{ s.amount }}</span>
-                    {% if s.memo %}<span style="color:var(--muted);font-size:0.8rem;"> memo: {{ s.memo }}</span>{% endif %}
-                </div>
-                {% endfor %}
-            </div>
-            <div class="field">
-                <label>Confidence</label>
-                <div class="value">
-                    {% set conf_pct = (proposal.confidence * 100)|int %}
-                    <span class="confidence {% if proposal.confidence >= 0.7 %}high{% elif proposal.confidence >= 0.4 %}medium{% else %}low{% endif %}">
-                        {{ conf_pct }}%
-                    </span>
-                </div>
-            </div>
-            {% if proposal.confidence_breakdown %}
-            <div class="field">
-                <label>Contributing factors</label>
-                <ul style="font-size:0.85rem;margin:0.25rem 0 0 1rem;padding:0;">
-                    {% for factor in proposal.confidence_breakdown %}
-                    <li>{{ factor }}</li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
-            <div class="field"><label>Rationale</label><div class="value" style="font-size:0.85rem;">{{ proposal.rationale }}</div></div>
-        </div>
+        {% endif %}
     </div>
 </div>
 
-{# ── Email evidence ── #}
+{# ── ML section ── #}
+<div class="card">
+    <h2>ML proposal</h2>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;" title="Machine-learning suggestion from your past categorisations and keyword heuristics.">Suggestion from the trained model (no LLM).</p>
+    <div class="field"><label title="How confident the ML model is (0–100%)">ML confidence</label><div class="value"><strong>{{ (proposal.confidence * 100)|int }}%</strong></div></div>
+    <div class="field"><label title="Suggested expense/income account from the model">Recommended category</label><div class="value">{{ proposal.suggested_splits[0].account_path if proposal.suggested_splits else '—' }}</div></div>
+    <div class="field"><label title="Suggested transaction description">Recommended description</label><div class="value">{{ proposal.suggested_description or '—' }}</div></div>
+</div>
+
+{# ── Email evidence (before LLM so user can tick which emails to send to the LLM) ── #}
 {% if proposal.evidence %}
-{% if proposal.evidence.emails %}
+{% if emails_for_display %}
 <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:0.5rem;margin-bottom:0.75rem;">
-        <h2 style="border:none;margin:0;padding:0;">Matched Emails ({{ proposal.evidence.emails|length }})</h2>
+        <h2 style="border:none;margin:0;padding:0;">Matched Email{% if emails_for_display|length != 1 %}s{% endif %} ({{ emails_for_display|length }})</h2>
         {% if not decided %}
-        <button type="button" id="toggle-emails" class="btn" style="background:var(--primary);color:white;padding:0.35rem 0.75rem;font-size:0.8rem;">Deselect All</button>
+        <button type="button" id="toggle-emails" class="btn" style="background:var(--primary);color:white;padding:0.35rem 0.75rem;font-size:0.8rem;" title="Toggle all checkboxes">Deselect All</button>
         {% endif %}
     </div>
-    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0.5rem;">Check the emails that correspond to this transaction. Approved emails will enrich the description.</p>
-    {% for em in proposal.evidence.emails %}
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0.5rem;" title="Only ticked emails are sent to the LLM when you click Check with LLM. Context shown is the same text the LLM receives.">Tick the emails that belong to this transaction. <strong>Only ticked emails are used when you run &quot;Check with LLM&quot;</strong>. Context: 500 chars before first amount, between earliest and last amount. Duplicates (95%% similar) removed.</p>
+    {% for em, display_context in emails_for_display %}
     <div class="evidence-item" style="display:flex;gap:0.75rem;align-items:flex-start;">
-        <input type="checkbox" class="email-check" name="approved_email" value="{{ em.evidence_id }}" form="decision-form" style="margin-top:0.25rem;" {% if not decided %}checked{% endif %}>
+        <input type="checkbox" class="email-check" name="approved_email" value="{{ em.evidence_id }}" form="decision-form" style="margin-top:0.25rem;" {% if not decided %}checked{% endif %} title="Include this email when running Check with LLM">
         <div style="flex:1;">
-            <span class="score">Score: {{ "%.1f"|format(em.relevance_score) }}</span>
+            <span class="score" title="Relevance score for amount/date match">Score: {{ "%.1f"|format(em.relevance_score) }}</span>
             <div class="sender">{{ em.sender }}</div>
             <div style="font-weight:600;">{{ em.subject }}</div>
             {% if em.parsed_amounts %}
-            <div style="font-size:0.85rem;margin-top:0.25rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+            <div style="font-size:0.85rem;margin-top:0.25rem;">Amounts: {% for a in em.parsed_amounts %}&pound;{{ a | money }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
             {% endif %}
             {% if email_category_hints and loop.index0 < email_category_hints|length %}
-            <div style="font-size:0.8rem;color:var(--primary);margin-top:0.2rem;">Suggested category from email: {{ email_category_hints[loop.index0] }}</div>
+            <div style="font-size:0.8rem;color:var(--primary);margin-top:0.2rem;" title="Keyword-based hint from sender/subject/body (not the LLM)">Suggested category from email (keyword heuristic): {{ email_category_hints[loop.index0] }}</div>
             {% endif %}
-            {% set body_display = em.filtered_body or em.body_snippet %}
-            {% if em.amount_context %}
-            <div style="font-size:0.85rem;margin-top:0.5rem;"><strong>Context around amount:</strong></div>
-            <div style="font-size:0.85rem;white-space:pre-wrap;background:var(--bg);padding:0.5rem;border-radius:4px;margin-top:0.25rem;">{{ em.amount_context }}</div>
-            {% endif %}
-            {% if body_display %}
-            <div style="font-size:0.85rem;margin-top:0.5rem;"><strong>Email body (clean):</strong></div>
-            <div style="font-size:0.85rem;white-space:pre-wrap;background:var(--bg);padding:0.5rem;border-radius:4px;margin-top:0.25rem;max-height:12em;overflow-y:auto;">{{ body_display }}</div>
-            {% endif %}
+            <div style="font-size:0.85rem;margin-top:0.5rem;"><strong>Email context</strong></div>
+            <div style="font-size:0.85rem;white-space:pre-wrap;background:var(--bg);padding:0.5rem;border-radius:4px;margin-top:0.25rem;max-height:12em;overflow-y:auto;">{{ display_context }}</div>
         </div>
     </div>
     {% endfor %}
 </div>
 {% endif %}
+{% endif %}
+
+{# ── LLM section: button + results (seller, description, items, category) ── #}
+<div class="card" id="llm-section">
+    <h2>LLM proposal</h2>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;" title="Uses only the emails you ticked above (or the transaction description if none).">Extraction and category suggestion from the LLM. Uses <strong>only ticked emails</strong> above (or transaction description if none ticked).</p>
+    {% if show_llm_button %}
+    <button type="button" id="btn-llm-check" class="btn" style="background:var(--primary);color:white;" title="Run extraction + category LLM using the currently ticked emails (or description only)">Check with LLM</button>
+    <div id="llm-status" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+    <div id="llm-result" style="margin-top:0.75rem;display:none;">
+        <div class="field"><label title="Extracted from ticked emails or description">Seller</label><div id="llm-seller" class="value"></div></div>
+        <div class="field"><label title="LLM-improved description">Recommended description</label><div id="llm-desc" class="value"></div></div>
+        <div class="field"><label title="Line items extracted from emails/description">Items</label><div id="llm-items" class="value"></div></div>
+        <div class="field"><label title="Suggested expense/income account">Recommended category</label><div id="llm-category" class="value"></div></div>
+        <div class="field"><label title="LLM confidence 0–100%">LLM confidence</label><div id="llm-confidence" class="value"></div></div>
+    </div>
+    {% endif %}
+    {% if proposal.extraction_result or proposal.llm_category or proposal.llm_description %}
+    <div id="llm-persisted" style="margin-top:0.75rem;">
+        {% if proposal.extraction_result and proposal.extraction_result.get('seller_name') %}
+        <div class="field"><label>Seller</label><div class="value">{{ proposal.extraction_result.seller_name }}{% if proposal.extraction_result.get('seller_web_description') %} <span style="color:var(--muted);font-size:0.9rem;">— {{ proposal.extraction_result.seller_web_description }}</span>{% endif %}</div></div>
+        {% endif %}
+        {% if proposal.llm_description %}
+        <div class="field"><label>Recommended description</label><div class="value">{{ proposal.llm_description }}</div></div>
+        {% endif %}
+        {% if proposal.extraction_result and proposal.extraction_result.get('items') %}
+        <div class="field"><label>Items</label></div>
+        {% for it in (proposal.extraction_result.get('items') or []) %}
+        <div style="margin-left:1rem;margin-bottom:0.25rem;">{{ it.get('description') or it.get('name') or '—' }} {% if it.get('amount') is not none %}<span class="amount">&pound;{{ it.amount | money }}</span>{% endif %}{% if it.get('web_description') %} <span style="color:var(--muted);font-size:0.85rem;">— {{ it.web_description }}</span>{% endif %}</div>
+        {% endfor %}
+        {% endif %}
+        {% if proposal.llm_category %}
+        <div class="field"><label>Recommended category</label><div class="value">{{ proposal.llm_category }}</div></div>
+        {% endif %}
+        {% if proposal.llm_confidence is not none %}
+        <div class="field"><label>LLM confidence</label><div class="value">{{ (proposal.llm_confidence * 100)|int }}%</div></div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
 
 {# ── Receipt evidence ── #}
 {% if proposal.evidence.receipt %}
@@ -143,32 +130,36 @@
     </div>
     <div class="field"><label>Source</label><div class="value">{{ proposal.evidence.receipt.source_path }}</div></div>
     {% if proposal.evidence.receipt.parsed_total is not none %}
-    <div class="field"><label>Total</label><div class="value amount">&pound;{{ proposal.evidence.receipt.parsed_total }}</div></div>
+    <div class="field"><label>Total</label><div class="value amount">&pound;{{ proposal.evidence.receipt.parsed_total | money }}</div></div>
     {% endif %}
     {% if proposal.evidence.receipt.line_items %}
     <div class="field"><label>Line Items</label></div>
     {% for item in proposal.evidence.receipt.line_items %}
-    <div style="margin-left:1rem;">{{ item.description }} <span class="amount">&pound;{{ item.amount }}</span></div>
+    <div style="margin-left:1rem;">{{ item.description }} <span class="amount">&pound;{{ item.amount | money }}</span></div>
     {% endfor %}
     {% endif %}
     <div class="field" style="margin-top:0.5rem;"><label>OCR Text</label><pre style="white-space:pre-wrap;font-size:0.85rem;background:var(--bg);padding:0.5rem;border-radius:4px;">{{ proposal.evidence.receipt.ocr_text[:500] }}</pre></div>
 </div>
-{% endif %}
 {% endif %}
 
 {# ── Decision form ── #}
 {% if not decided %}
 <div class="card">
     <h2>Your Decision</h2>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.5rem;">Copy the ML or LLM suggestion into the fields below, or type your own. Then Approve (write to GnuCash) or Skip.</p>
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
+        <button type="button" id="btn-use-ml" class="btn" style="background:var(--border);color:var(--text);" title="Fill description and category with the ML suggestion above">Use ML proposal</button>
+        <button type="button" id="btn-use-llm" class="btn" style="background:var(--border);color:var(--text);" {% if not proposal.llm_category and not proposal.llm_description %}disabled title="Run Check with LLM first"{% else %}title="Fill description and category with the LLM suggestion above"{% endif %}>Use LLM proposal</button>
+    </div>
     <form id="decision-form" method="POST" action="{{ url_for('decide', proposal_id=proposal.proposal_id) }}">
         <div class="field">
-            <label>Description</label>
-            <input type="text" name="description" value="{{ proposal.suggested_description }}">
+            <label title="Final description that will be written to the transaction">Description</label>
+            <input type="text" name="description" id="decision-description" value="{{ proposal.suggested_description }}" placeholder="Transaction description">
         </div>
 
         <div class="field" style="margin-top:0.75rem;">
-            <label>Splits</label>
-            <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.5rem;">Choose a category from the list or create a new one (e.g. Expenses:MyCategory).</p>
+            <label title="Account path and amount for each split (expense/income)">Splits</label>
+            <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.5rem;">Choose a category from the list or create a new one (e.g. Expenses:MyCategory). This is what will be written when you Approve.</p>
             {% for split in proposal.suggested_splits %}
             {% set paths_list = account_paths or [] %}
             {% set path_in_list = split.account_path in paths_list %}
@@ -180,7 +171,7 @@
                     {% endfor %}
                 </select>
                 <input type="text" name="split_path_new" class="split-path-new" value="{{ split.account_path if not path_in_list and split.account_path else '' }}" placeholder="New category path (e.g. Expenses:MyCategory)" style="min-width:14rem; display:{{ 'inline-block' if not path_in_list else 'none' }};">
-                <input type="text" name="split_amount" value="{{ split.amount }}" placeholder="Amount" style="width:6rem;">
+                <input type="text" name="split_amount" class="split-amount-input" value="{{ split.amount | money }}" placeholder="Amount" style="width:6rem;">
             </div>
             {% endfor %}
         </div>
@@ -191,9 +182,8 @@
         </div>
 
         <div class="actions">
-            <button type="submit" name="action" value="approve" class="btn btn-approve">Approve</button>
-            <button type="submit" name="action" value="edit" class="btn btn-edit">Edit &amp; Approve</button>
-            <button type="submit" name="action" value="skip" class="btn btn-skip">Skip</button>
+            <button type="submit" name="action" value="approve" class="btn btn-approve" title="Save this decision and apply it when you run gnc-enrich apply (writes description and splits to GnuCash).">Approve</button>
+            <button type="submit" name="action" value="skip" class="btn btn-skip" title="Do not change this transaction; skip it for now (you can reload skipped later).">Skip</button>
         </div>
     </form>
 </div>
@@ -205,6 +195,37 @@
 
 <script>
 (function() {
+    var accountPaths = {{ (account_paths or []) | tojson }};
+    var mlDesc = {{ proposal.suggested_description | tojson }};
+    var mlPath = {{ (proposal.suggested_splits[0].account_path if proposal.suggested_splits else '') | tojson }};
+    var mlAmount = {{ (proposal.suggested_splits[0].amount|string if proposal.suggested_splits else '') | tojson }};
+    var llmDesc = {{ (proposal.llm_description or '') | tojson }};
+    var llmPath = {{ (proposal.llm_category or '') | tojson }};
+    var llmAmount = {{ (proposal.tx_amount|string if proposal.tx_amount is not none else '') | tojson }};
+
+    function applyProposal(description, category, amount) {
+        var descInput = document.getElementById('decision-description');
+        if (descInput) descInput.value = description || '';
+        var firstRow = document.querySelector('.split-row');
+        if (!firstRow) return;
+        var sel = firstRow.querySelector('.split-path-select');
+        var newInput = firstRow.querySelector('.split-path-new');
+        var amtInput = firstRow.querySelector('.split-amount-input');
+        if (amtInput) amtInput.value = amount || '';
+        if (accountPaths.indexOf(category) !== -1) {
+            if (sel) { sel.value = category; sel.dispatchEvent(new Event('change')); }
+            if (newInput) { newInput.value = ''; newInput.style.display = 'none'; }
+        } else {
+            if (sel) { sel.value = ''; sel.dispatchEvent(new Event('change')); }
+            if (newInput) { newInput.value = category || ''; newInput.style.display = 'inline-block'; }
+        }
+    }
+
+    var btnUseMl = document.getElementById('btn-use-ml');
+    if (btnUseMl) btnUseMl.addEventListener('click', function() { applyProposal(mlDesc, mlPath, mlAmount); });
+    var btnUseLlm = document.getElementById('btn-use-llm');
+    if (btnUseLlm) btnUseLlm.addEventListener('click', function() { applyProposal(llmDesc, llmPath, llmAmount); });
+
     var btn = document.getElementById('toggle-emails');
     if (btn) {
         btn.addEventListener('click', function() {
@@ -221,6 +242,58 @@
             if (newInput) newInput.style.display = this.value === '' ? 'inline-block' : 'none';
         });
     });
+
+    var llmBtn = document.getElementById('btn-llm-check');
+    if (llmBtn) {
+        llmBtn.addEventListener('click', function() {
+            var status = document.getElementById('llm-status');
+            var resultDiv = document.getElementById('llm-result');
+            status.textContent = 'Running LLM…';
+            status.style.color = '';
+            resultDiv.style.display = 'none';
+            llmBtn.disabled = true;
+            var selectedIds = [];
+            document.querySelectorAll('.email-check:checked').forEach(function(cb) { selectedIds.push(cb.value); });
+            fetch('{{ url_for("llm_check", proposal_id=proposal.proposal_id) }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ selected_email_ids: selectedIds })
+            }).then(function(r) {
+                return r.json().then(function(data) {
+                    if (!r.ok) throw new Error(data.error || 'Request failed');
+                    return data;
+                });
+            }).then(function(data) {
+                status.textContent = 'Done. Reloading…';
+                status.style.color = 'var(--success)';
+                var sellerEl = document.getElementById('llm-seller');
+                var descEl = document.getElementById('llm-desc');
+                var itemsEl = document.getElementById('llm-items');
+                var catEl = document.getElementById('llm-category');
+                var confEl = document.getElementById('llm-confidence');
+                if (descEl) descEl.textContent = data.description || '—';
+                if (data.extraction && data.extraction.seller_name) {
+                    sellerEl.innerHTML = data.extraction.seller_name + (data.extraction.seller_web_description ? ' <span style="color:var(--muted);">— ' + data.extraction.seller_web_description + '</span>' : '');
+                } else { sellerEl.textContent = '—'; }
+                if (data.extraction && data.extraction.items && data.extraction.items.length) {
+                    itemsEl.innerHTML = data.extraction.items.map(function(it) {
+                        var d = it.description || it.name || '—';
+                        var a = it.amount ? ' £' + it.amount : '';
+                        var w = it.web_description ? ' <span style="color:var(--muted);font-size:0.85rem;">— ' + it.web_description + '</span>' : '';
+                        return d + a + w;
+                    }).join('<br>');
+                } else { itemsEl.textContent = '—'; }
+                catEl.textContent = data.category || '—';
+                confEl.textContent = data.confidence != null ? Math.round(data.confidence * 100) + '%' : '—';
+                resultDiv.style.display = 'block';
+                window.location.reload();
+            }).catch(function(err) {
+                status.textContent = 'Error: ' + (err.message || 'LLM check failed');
+                status.style.color = 'var(--error, #c00)';
+                llmBtn.disabled = false;
+            });
+        });
+    }
 })();
 </script>
 

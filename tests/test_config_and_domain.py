@@ -2,6 +2,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from gnc_enrich.config import ApplyConfig, LlmConfig, LlmMode, ReviewConfig, RunConfig
 from gnc_enrich.domain.models import (
     Account,
@@ -30,6 +32,7 @@ def test_config_defaults() -> None:
     assert run.date_window_days == 7
     assert run.amount_tolerance == 0.50
     assert run.include_skipped is False
+    assert run.use_llm_during_run is False
     assert run.llm.mode == LlmMode.DISABLED
 
     review = ReviewConfig(state_dir=Path("state"))
@@ -166,3 +169,11 @@ def test_review_action_enum() -> None:
     assert ReviewAction.APPROVE == "approve"
     assert ReviewAction.SKIP == "skip"
     assert ReviewAction.EDIT == "edit"
+
+
+def test_review_action_validate_accepts_and_rejects() -> None:
+    assert ReviewAction.validate("approve") == "approve"
+    assert ReviewAction.validate("edit") == "edit"
+    assert ReviewAction.validate("skip") == "skip"
+    with pytest.raises(ValueError, match="Invalid review action"):
+        ReviewAction.validate("invalid")

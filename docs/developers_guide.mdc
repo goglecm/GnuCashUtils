@@ -1,5 +1,28 @@
 # Developers Guide
 
+## Priorities and Goals
+
+The project aims for a **robust, well-tested, and well-documented** codebase with an **up-to-date specification**. In order of priority:
+
+1. **Correctness and robustness**
+   - Every user-facing or data-touching path should handle errors gracefully (no uncaught exceptions that crash the process where recovery is possible).
+   - Invalid or missing data (corrupt JSONL, missing files, bad input) must be handled with clear behaviour: skip-and-log, return empty/default, or raise a documented exception.
+
+2. **Test coverage**
+   - Every spec requirement and every significant code path (happy, edge, and failure) should have tests.
+   - New behaviour is not “done” until it has tests; existing behaviour should gain tests when you touch it and find none.
+   - Prefer tests that document and lock in intended behaviour over tests that only assert implementation details.
+
+3. **Documentation and spec**
+   - The **spec** (`docs/gnucash_email_receipt_categorization_spec.mdc`) is the source of truth for *what* the system does (domain rules, inputs/outputs, components).
+   - Code and comments document *how* and *why*; the spec stays aligned with implemented behaviour.
+   - When you change behaviour or add a feature, update the spec (or add an implementation note) and the **test plan** (`docs/test_plan_and_strategy.mdc`) so they stay accurate.
+
+4. **Maintainability**
+   - Clear module boundaries, minimal optional dependencies, and British English in all docs and comments (see below).
+
+---
+
 ## Development Environment
 
 ```bash
@@ -17,9 +40,210 @@ pip install -e ".[dev]"
   - macOS: `brew install tesseract`
 - **libheif**: Required for HEIC image support (installed via `pillow-heif` pip package).
 
+---
+
+## Documenting Code
+
+### Language and style
+
+All documentation and code comments must be written in **British English** with correct grammar and complete punctuation.
+
+Comments and docstrings must convey **intention** — not merely restate what the code does. Every comment should answer *why* a decision was made, what trade-off was accepted, or what constraint the code satisfies. Do not write comments that a competent reader could infer from the code itself.
+
+### Docstrings
+
+- **Public** classes and methods (everything that is part of the module’s API) must have docstrings.
+- Use a single short summary line; add a longer description and “Parameters” / “Returns” / “Raises” where they clarify contract or edge behaviour.
+- Document **raised exceptions** and **returned defaults** (e.g. “Returns the empty string if the account is unknown”) so callers and tests know what to expect.
+
+### Inline comments
+
+- Prefer explaining *why* (e.g. “GnuCash stores split values as integer fractions; denominator 100 is safe for GBP”) over *what* (e.g. “Convert to int”).
+- For non-obvious error handling, a one-line comment (e.g. “Skip malformed lines so one bad record does not break the whole load”) helps future readers and test authors.
+
+### What to avoid
+
+```python
+# Bad — restates the code
+total = sum(amounts)  # Sum the amounts
+
+# Bad — describes the "what" without the "why"
+if len(categories) < 2:
+    return  # Return early if fewer than 2 categories
+```
+
+### Good practice
+
+```python
+# SGDClassifier requires at least two distinct classes; fall back to
+# keyword heuristic when the training set is too homogeneous.
+if len(categories) < 2:
+    return
+
+# GnuCash stores split values as integer fractions (e.g. 2500/100 for
+# £25.00).  Using a fixed denominator of 100 is safe for GBP, which
+# always has two decimal places.
+num = int(d * 100)
+```
+
+These standards apply to docstrings, inline comments, README, spec, and `.mdc` rule files.
+
+---
+
+## The Specification and When to Update It
+
+### Where the spec lives
+
+- **Main specification**: `docs/gnucash_email_receipt_categorization_spec.mdc`
+  - Domain rules (§3), inputs/outputs (§4), components (§6), evidence matching (§7), review and apply behaviour (§9–10), acceptance criteria (§15).
+- **Implementation notes**: Spec §6.2.1 documents guaranteed behaviours (e.g. `get_tree()` / `get_account_path` defaults, JSONL skip-on-error, review non-fatal error handling) that are tested but not spelled out in the main narrative.
+
+### When to update the spec
+
+- **New feature or user-visible behaviour**: Add or amend the relevant section (scope, component, or workflow) so the spec still describes the system.
+- **Behaviour change** (e.g. new error handling, new default): Update the spec (or §6.2.1) so it matches the implementation; add or adjust tests to lock in the new behaviour.
+- **Implementation detail** that callers or tests rely on (e.g. “load_metadata returns None for missing/corrupt”): Prefer documenting it in §6.2.1 and covering it with tests rather than leaving it only in code.
+
+### Relationship to tests
+
+- The **test plan** (`docs/test_plan_and_strategy.mdc`) maps test files to spec sections and lists “Spec coverage” and “Error handling / graceful degradation”.
+- When you add tests for a new requirement or error path, update the test plan (test matrix and, if needed, the spec-coverage bullets) so the next developer can see what is covered.
+
+---
+
+## Codebase Structure
+
+The package is laid out as a conventional Python application under `src/gnc_enrich`:
+
+```text
+src/gnc_enrich/
+  __init__.py
+  __main__.py          # python -m gnc_enrich entrypoint
+  cli.py               # CLI: run / review / apply
+  config.py            # RunConfig, ApplyConfig, ReviewConfig, LlmConfig
+  domain/
+    __init__.py
+    models.py          # Transaction, Split, Evidence, Proposal, ReviewDecision, AuditEntry, SkipRecord
+  gnucash/
+    __init__.py
+    loader.py          # GnuCashLoader (gzip XML), GnuCashWriter (backup + write)
+  email/
+    __init__.py
+    parser.py          # EML parsing, body filtering, amount extraction
+    index.py           # JSONL email index build_and_load
+  receipt/
+    __init__.py
+    ocr.py             # Receipt OCR + optional LLM fallback for totals
+    repository.py      # Lists unprocessed receipts, moves approved to processed
+  matching/
+    __init__.py
+    email_matcher.py   # Amount- and date-based email scoring
+    receipt_matcher.py # Receipt-to-transaction matching
+  ml/
+    __init__.py
+    predictor.py       # CategoryPredictor (ML + optional LLM), FeedbackTrainer
+  review/
+    __init__.py
+    service.py         # ReviewQueueService: proposal queue, decisions, enrichment
+    webapp.py          # Flask app wiring templates and routes
+    templates/
+      base.html
+      review.html
+      done.html
+      queue.html
+  apply/
+    __init__.py
+    engine.py          # ApplyEngine: dry-run, apply, backup, rollback, audit
+  state/
+    __init__.py
+    repository.py      # JSON/JSONL persistence for proposals, decisions, skips, audit, metadata
+  services/
+    __init__.py
+    pipeline.py        # EnrichmentPipeline: run-phase orchestration
+  prompts/
+    __init__.py        # Prompt loader + renderer for LLM
+    *.txt              # Default LLM prompt templates (user-overridable via <state-dir>/prompts)
+```
+
+### External Dependencies
+
+Runtime dependencies (see `pyproject.toml` for the authoritative list):
+
+- **Python 3.11+**
+- `lxml` — GnuCash XML parsing.
+- `pytesseract`, `Pillow`, `pillow-heif` — Receipt OCR for jpg/jpeg/png/heic/heif.
+- `scikit-learn`, `joblib` — ML category prediction (TF‑IDF + SGDClassifier).
+- `flask` + Jinja2 — Review web app and HTML templates.
+- `requests` — Optional LLM API calls.
+- Optional `[web]` extra: `ddgs` for `use_web` mode (inject DuckDuckGo search snippets into the prompt).
+
+---
+
+## Documenting Changes (Commits and workflow)
+
+- **Commit messages**: Use clear, imperative summaries. For behavioural or spec-related changes, mention the area (e.g. “review”, “apply”, “state”) and whether spec/docs were updated.
+- **After changing behaviour**:
+  1. Add or update tests so the new (or fixed) behaviour is covered.
+  2. Update the spec (or §6.2.1) if the change affects what the system does or guarantees.
+  3. Update the test plan if you added a test file or a new category of tests (e.g. error handling).
+
+This keeps the codebase, spec, and test plan in sync and avoids “documentation drift”.
+
+---
+
+## How to Add Tests
+
+### Where tests live
+
+- **Location**: All tests live under `tests/`.
+- **Naming**: One test file per main module or area, named `test_<module_or_area>.py` (e.g. `test_gnucash_loader.py`, `test_review.py`).
+- **Shared fixtures**: `tests/conftest.py` (e.g. `SAMPLE_GNUCASH_XML`, `sample_gnucash_path`). Use `tmp_path` for any test that writes to disk so tests are isolated and repeatable.
+
+The **test plan** (`docs/test_plan_and_strategy.mdc`) lists each test file, approximate count, and what it covers; use it to decide where a new test belongs.
+
+### What to test (minimum for new or touched code)
+
+For each new or modified behaviour, add tests that cover:
+
+1. **Happy path** — normal inputs and expected outputs.
+2. **Edge cases** — empty lists, missing optional data, boundary values (e.g. zero amount, single category).
+3. **Failure / error path** — invalid input, missing file, corrupt data, or code that raises. The goal is to show that **every possible error from each function can be handled gracefully** (skip-and-continue, return default, or raise a documented exception) so the system fails in a predictable, non-fatal way where intended.
+
+If you add a new public function or API route, add at least one test that documents its contract (and, where relevant, its error behaviour).
+
+### Conventions (see also test plan)
+
+- **Structure**: Arrange / Act / Assert (AAA).
+- **I/O**: Use the `tmp_path` fixture; do not rely on a real filesystem layout or commit real user data.
+- **Mocks**: For LLM or HTTP, patch at the call site (e.g. `requests.post` or the service’s dependency); use clearly synthetic data.
+- **Naming**: `test_<behaviour>` (e.g. `test_load_decisions_skips_corrupt_lines`, `test_decide_invalid_action_returns_400`).
+
+### After adding tests
+
+- Run the full suite (`pytest`) and the relevant file (`pytest tests/test_<name>.py -v`).
+- Update the **test plan** if you added a new test file or a new category of coverage (e.g. a new error-handling test); keep the test matrix and “Spec coverage” / “Error handling” sections accurate.
+
+---
+
+## Testing Expectations by Area
+
+- **`cli.py`**: Parser contracts, required args, flag defaults, command dispatch.
+- **`config.py`** and **`domain/models.py`**: Dataclass defaults, type/shape invariants, validation (e.g. `ReviewAction.validate`).
+- **`gnucash/loader.py`**: Fixture-driven XML parse/write using `sample_gnucash_path`; no-book and write-changes error paths; `get_tree()` / `get_account_path` defaults.
+- **`email/*`**: Parse and body-filtering tests using `tests/fixtures/emails/`; missing file raises; index build skips corrupt lines and unparseable .eml.
+- **`receipt/*`**: Programmatically generated images (Pillow); `FileNotFoundError` and unsupported format; repository `list_unprocessed` when dir missing.
+- **`matching/*`**: Deterministic scoring with constructed evidence; tolerance-zero; no-amount exclusion.
+- **`ml/predictor.py`**: Training edge cases; LLM path mocked; `get_emails_for_display` (including empty list); run_llm_check/flow None and fallbacks.
+- **`review/*`**: Service unit tests (queue, decisions, enrichment failure non-fatal); Flask test client for all routes (200/400/404/503, invalid action, display/serialisation errors).
+- **`apply/engine.py`**: Dry-run (including no decisions); apply; backup; rollback; audit; apply/rollback raise when run_config or backup is missing/invalid; receipt not moved on amount mismatch.
+- **`state/repository.py`**: Roundtrip and corrupt/malformed JSONL (decisions, skips, audit log) skip bad lines and continue.
+- **`services/pipeline.py`**: Full-run integration; account_paths and run_config persisted; build_proposals/run raise when GnuCash is invalid.
+
+---
+
 ## Running Tests
 
-From repository root:
+From the repository root:
 
 ```bash
 pytest
@@ -41,6 +265,8 @@ pytest -vv
 pytest tests/test_integration.py -v
 ```
 
+---
+
 ## Project Structure
 
 ```
@@ -54,104 +280,66 @@ src/gnc_enrich/          # Main package
   receipt/ocr.py         # Tesseract OCR + optional LLM fallback
   receipt/repository.py  # Receipt file management
   matching/              # Evidence-to-transaction matching
-  ml/predictor.py        # ML category prediction + feedback
+  ml/predictor.py       # ML category prediction + feedback
   review/service.py      # Review queue management
   review/webapp.py       # Flask web app
   review/templates/      # Jinja2 HTML templates
   apply/engine.py        # Apply, backup, rollback, audit
   state/repository.py    # JSON/JSONL state persistence
   services/pipeline.py   # High-level orchestration
-tests/                   # Test suite (302 tests)
+docs/
+  gnucash_email_receipt_categorization_spec.mdc   # Main spec
+  test_plan_and_strategy.mdc                     # Test matrix and strategy
+  developers_guide.mdc                            # This file
+tests/                   # Test suite
   conftest.py            # Shared fixtures (sample GnuCash XML)
-  fixtures/emails/       # 13 synthetic .eml files in subdirectories
+  fixtures/emails/       # Synthetic .eml files in subdirectories
 ```
 
-## Documentation and Comment Standards
+---
 
-All documentation and code comments must be written in **British English** with correct grammar and complete punctuation.
+## LLM Configuration and Architecture
 
-Comments and docstrings must convey **intention** — not merely restate what the code does or how it does it. Every comment should answer *why* a decision was made, what trade-off was accepted, or what constraint the code satisfies. Do not write comments that a competent reader could infer from the code itself.
+The system supports optional LLM integration. See **§6.3 LLM Interaction Architecture** in the main spec for the full flow. Summary:
 
-Examples of what to avoid:
+- **Run phase**: By default the run phase **does not** call the LLM (`use_llm_during_run=False`). Proposals are ML-only. Optional config can enable LLM during run when ML confidence < 60% (same flow as review, used to refine the single proposal).
+- **Review phase**: The main LLM entry point is **"Check with LLM"** in the web UI. It sends `POST /review/<proposal_id>/llm-check`. The service loads LLM config from run metadata (`run_config`), runs extraction (if configured) then category step 1 and step 2, and updates the proposal with `llm_confidence`, `llm_category`, `llm_description`, `extraction_result` without overwriting ML fields.
+- **Receipt OCR fallback**: When Tesseract fails to extract a total, an LLM can be used for structured extraction (separate from the category flow).
+- **Evidence enrichment**: When the user approves evidence (emails/receipt), terse receipt items may be expanded via the predictor’s `describe_terse_items` (LLM config is loaded from run metadata).
 
-```python
-# Bad — restates the code
-total = sum(amounts)  # Sum the amounts
-
-# Bad — describes the "what" without the "why"
-if len(categories) < 2:
-    return  # Return early if fewer than 2 categories
-```
-
-Examples of good practice:
-
-```python
-# SGDClassifier requires at least two distinct classes; fall back to
-# keyword heuristic when the training set is too homogeneous.
-if len(categories) < 2:
-    return
-
-# GnuCash stores split values as integer fractions (e.g. 2500/100 for
-# £25.00).  Using a fixed denominator of 100 is safe for GBP, which
-# always has two decimal places.
-num = int(d * 100)
-```
-
-These standards apply equally to docstrings, inline comments, README content, spec files, and `.mdc` rule files.
-
-## How to Add Tests (Module Completion Workflow)
-
-When implementing a module/class:
-
-1. Locate its test file in `tests/` (or add one using `tests/test_<module>.py`).
-2. Add at least:
-   - happy path
-   - one edge case
-   - one failure case (invalid input/exception path)
-3. If module touches I/O, add temporary-path based tests using `tmp_path` fixture.
-4. If adding new public APIs, add parser/API contract tests.
-
-## Testing Expectations by Area
-
-- `cli.py`: parser contracts, required args, flag defaults, command dispatch.
-- `config.py` and `domain/models.py`: dataclass defaults, type/shape invariants.
-- `gnucash/loader.py`: fixture-driven XML parse/write tests using `sample_gnucash_path` conftest fixture.
-- `email/*`: fixture-driven parse tests using `tests/fixtures/emails/` .eml files; body filtering tests (HTML stripping, signature/quote removal, amount extraction from cleaned body); HTML entity decoding.
-- `receipt/*`: programmatically generated receipt images via Pillow.
-- `matching/*`: deterministic scoring/prediction tests with constructed evidence; tolerance-zero exact matching; no-amount email exclusion.
-- `ml/predictor.py`: train on synthetic history, verify predictions + LLM path (mocked); refund detection with empty account_name; training edge cases (single tx, single category).
-- `review/*`: service unit tests + Flask test client for web routes.
-- `apply/engine.py`: dry-run, apply, backup, rollback, audit verification.
-- `services/pipeline.py`: integration tests with full fixture data.
-
-## LLM Configuration
-
-The system supports optional LLM integration for enhanced categorization:
+CLI examples:
 
 ```bash
 # Disabled (default, fully offline)
 python -m gnc_enrich run --llm-mode disabled ...
 
-# Local LLM (e.g., Ollama)
+# Local LLM (e.g., Ollama) — used when user clicks "Check with LLM" in review
 python -m gnc_enrich run --llm-mode offline --llm-endpoint http://localhost:11434/v1/chat/completions --llm-model llama3 ...
 
-# Remote LLM (e.g., OpenAI-compatible API)
-python -m gnc_enrich run --llm-mode online --llm-endpoint https://api.example.com/v1/chat/completions --llm-model gpt-4 ...
-
-# Local LLM with web search (inject DuckDuckGo results into the prompt for category suggestions)
-pip install duckduckgo-search   # or: pip install -e ".[web]"
-python -m gnc_enrich run --llm-mode offline --llm-endpoint http://localhost:11434/v1/chat/completions --llm-model llama3 --llm-use-web ...
+# Optional: extraction LLM (per-email then merge) + web search snippets
+python -m gnc_enrich run --llm-mode offline ... --llm-extraction-endpoint http://localhost:11434/v1/chat/completions --llm-extraction-model llama3 --llm-use-web ...
 ```
 
-LLM is used in two places:
-1. **Receipt OCR fallback**: When Tesseract fails to extract a total, the LLM attempts structured extraction.
-2. **Category rationale**: When ML classifier confidence is below 60%, the LLM provides an alternative suggestion.
+At pipeline start, INFO logs indicate LLM config; when enabled, a **connection test** runs (`LLM connection OK` or a warning). LLM configuration is persisted in run metadata and loaded automatically during review.
 
-At pipeline start, INFO logs indicate how the LLM was loaded: `LLM enabled: mode=... endpoint=... model=...` when enabled, or `LLM disabled; using ML/heuristics and OCR only` when disabled. When enabled, a **connection test** runs (a minimal chat completion request); you will see `LLM connection OK` or a warning if it failed. During email indexing, progress is logged every **5000 processed emails**.
+---
+
+## Keeping Documentation and Spec Up to Date
+
+A simple workflow keeps the codebase, spec, and test plan aligned:
+
+1. **Before or while implementing**: Check the spec for the intended behaviour and the test plan for where to add tests.
+2. **After implementing**: Add or update tests (happy path, edge, and error paths as above).
+3. **If behaviour or guarantees changed**: Update the spec (main sections or §6.2.1) and the test plan (matrix and spec-coverage / error-handling bullets).
+4. **Commit**: Include spec/test-plan updates in the same commit (or a follow-up) so the branch does not leave documentation behind.
+
+If you discover behaviour that is **not** in the spec but is relied upon (e.g. by callers or tests), add an implementation note in §6.2.1 and ensure it is tested. This reduces “undocumented contracts” and keeps the spec the single place to look for what the system does and guarantees.
+
+---
 
 ## Troubleshooting
 
-- Import errors: ensure `pip install -e ".[dev]"` was run.
-- Missing pytest: install with `pip install pytest`.
-- Tesseract not found: install the system package (see System Dependencies above).
-- Bytecode clutter: `make clean`.
+- **Import errors**: Ensure `pip install -e ".[dev]"` was run.
+- **Missing pytest**: Install with `pip install pytest`.
+- **Tesseract not found**: Install the system package (see System Dependencies above).
+- **Bytecode clutter**: `make clean`.

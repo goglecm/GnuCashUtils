@@ -5,10 +5,15 @@ alwaysApply: true
 
 # Architecture
 
-The authoritative architecture and module status document lives in `docs/architecture_implementation_plan.mdc`.
-Always consult that file for the package layout, dependency list, module status, and test coverage matrix.
+The authoritative descriptions of architecture and module layout now live in:
 
-Quick data flow reminder (see architecture doc for full details):
+- `docs/gnucash_email_receipt_categorization_spec.mdc` (components, data flow, LLM interaction)
+- `docs/developers_guide.mdc` (codebase structure, external dependencies, testing expectations)
+
+`docs/architecture_implementation_plan.mdc` is intentionally kept as a lightweight pointer to those
+two documents and should not introduce additional facts.
+
+Quick data flow reminder (see spec + developers guide for full details):
 
 - `run` → load GnuCash → filter candidates → index emails → OCR receipts → match → predict → save proposals
 - `review` → Flask web app → one-by-one approval with evidence checkboxes → persist decisions

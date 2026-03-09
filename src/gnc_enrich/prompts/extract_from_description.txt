@@ -1,0 +1,6 @@
+From the following transaction description and amount only (no email), extract if present: supplier/seller name, and item name(s).
+Return only valid JSON with keys: seller_name (string), items (array of {description, amount} per item; if the description suggests a single purchase use the transaction amount for that item, else empty array if unclear).
+Use empty string or empty array when not found.
+
+Transaction description: {{description}}
+Amount: £{{amount}}

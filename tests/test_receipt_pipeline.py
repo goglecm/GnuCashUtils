@@ -116,6 +116,17 @@ class TestReceiptOcrEngine:
         ev = engine.parse(multi_item_receipt)
         assert ev.ocr_text != ""
 
+    def test_real_world_receipts_parse_without_error(self) -> None:
+        """Smoke-test OCR on bundled real-world receipt images."""
+        fixtures_dir = Path(__file__).parent / "fixtures" / "receipts"
+        engine = ReceiptOcrEngine()
+        image_paths = sorted(fixtures_dir.glob("*"))
+        # Ensure we actually have some fixtures wired up.
+        assert image_paths, "Expected at least one real-world receipt fixture image"
+        for img_path in image_paths:
+            ev = engine.parse(img_path)
+            assert ev.ocr_text != ""
+
     def test_file_not_found(self) -> None:
         engine = ReceiptOcrEngine()
         with pytest.raises(FileNotFoundError):
@@ -127,6 +138,115 @@ class TestReceiptOcrEngine:
         engine = ReceiptOcrEngine()
         with pytest.raises(ValueError, match="Unsupported"):
             engine.parse(txt)
+
+
+class TestReceiptOcrEngineLlmFallback:
+
+    def test_llm_fallback_updates_total_and_items(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """LLM fallback populates total and line items when Tesseract finds none."""
+        from gnc_enrich.config import LlmConfig, LlmMode
+        from gnc_enrich.domain.models import ReceiptEvidence
+
+        dummy_image = tmp_path / "blank.jpg"
+        _make_receipt_image(dummy_image, ["Unreadable content"])
+
+        # Force Tesseract to return text without any detectable totals.
+        import gnc_enrich.receipt.ocr as ocr_mod
+
+        def fake_image_to_string(_img: Image.Image) -> str:  # type: ignore[override]
+            return "no totals here"
+
+        monkeypatch.setattr(ocr_mod.pytesseract, "image_to_string", fake_image_to_string)
+
+        # Mock requests.post used by the LLM fallback.
+        class DummyResponse:
+            def raise_for_status(self) -> None:
+                return
+
+            def json(self) -> dict:  # type: ignore[override]
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": '{"total": "29.99", "items": [{"description": "Bike light", "amount": "29.99"}]}'
+                            }
+                        }
+                    ]
+                }
+
+        def fake_post(*_args, **_kwargs):  # type: ignore[override]
+            return DummyResponse()
+
+        import requests
+
+        monkeypatch.setattr(requests, "post", fake_post)
+
+        llm_cfg = LlmConfig(
+            mode=LlmMode.ONLINE,
+            endpoint="https://example.test/llm",
+            model_name="test-model",
+            api_key="test",
+            timeout_seconds=5,
+        )
+        engine = ReceiptOcrEngine(llm_config=llm_cfg)
+
+        # Start from an evidence object with no parsed total.
+        evidence = ReceiptEvidence(
+            evidence_id="ev1",
+            source_path=str(dummy_image),
+            ocr_text="no totals here",
+            parsed_total=None,
+            line_items=[],
+        )
+
+        updated = engine._try_llm_fallback(evidence, dummy_image)
+        assert updated.parsed_total == Decimal("29.99")
+        assert updated.line_items
+        assert any(it.description == "Bike light" for it in updated.line_items)
+
+    def test_llm_fallback_swallows_errors(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """LLM fallback logs and returns original evidence when the API call fails."""
+        from gnc_enrich.config import LlmConfig, LlmMode
+        from gnc_enrich.domain.models import ReceiptEvidence
+
+        dummy_image = tmp_path / "blank.jpg"
+        _make_receipt_image(dummy_image, ["Unreadable content"])
+
+        import gnc_enrich.receipt.ocr as ocr_mod
+
+        def fake_image_to_string(_img: Image.Image) -> str:  # type: ignore[override]
+            return "no totals here"
+
+        monkeypatch.setattr(ocr_mod.pytesseract, "image_to_string", fake_image_to_string)
+
+        # Make requests.post raise to exercise the error path.
+        import requests
+
+        def failing_post(*_args, **_kwargs):  # type: ignore[override]
+            raise RuntimeError("network failure")
+
+        monkeypatch.setattr(requests, "post", failing_post)
+
+        llm_cfg = LlmConfig(
+            mode=LlmMode.ONLINE,
+            endpoint="https://example.test/llm",
+            model_name="test-model",
+            api_key="test",
+        )
+        engine = ReceiptOcrEngine(llm_config=llm_cfg)
+
+        evidence = ReceiptEvidence(
+            evidence_id="ev2",
+            source_path=str(dummy_image),
+            ocr_text="no totals here",
+            parsed_total=None,
+            line_items=[],
+        )
+
+        updated = engine._try_llm_fallback(evidence, dummy_image)
+        # On failure, we should get the original evidence back with no total.
+        assert updated.parsed_total is None
+        assert updated.line_items == []
 
 
 # -- Receipt repository -------------------------------------------------------

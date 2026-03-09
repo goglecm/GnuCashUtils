@@ -493,32 +493,6 @@ class TestRefundDetection:
         assert "Refund detected" not in proposal.rationale
 
 
-class TestTransferProposal:
-
-    def test_transfer_proposal_keeps_original_splits(self) -> None:
-        """Transfers get suggested_splits = original; no category change."""
-        transfer_tx = Transaction(
-            tx_id="tx_transfer",
-            posted_date=date(2025, 1, 25),
-            description="Transfer to Savings",
-            currency="GBP",
-            amount=Decimal("500.00"),
-            splits=[
-                Split(account_path="Current Account", amount=Decimal("-500.00")),
-                Split(account_path="Savings Account", amount=Decimal("500.00")),
-            ],
-            account_name="Current Account",
-            original_category="",
-            is_transfer=True,
-        )
-        predictor = CategoryPredictor()
-        proposal = predictor.propose(transfer_tx, [], None)
-        assert proposal.suggested_splits == transfer_tx.splits
-        assert proposal.confidence == 1.0
-        assert "Transfer" in proposal.rationale
-        assert "no split change" in proposal.confidence_breakdown[0].lower()
-
-
 class TestSchemaVersionHeaders:
     """Spec Section 13: all state files must have schema version headers."""
 

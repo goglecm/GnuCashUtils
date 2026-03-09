@@ -32,7 +32,8 @@ class ApplyEngine:
         report_lines: list[str] = []
         report_lines.append("=" * 70)
         report_lines.append("DRY-RUN REPORT")
-        report_lines.append(f"Generated: {datetime.now(timezone.utc).isoformat()}")
+        generated_header = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S %Z")
+        report_lines.append(f"Generated: {generated_header}")
         report_lines.append("=" * 70)
         report_lines.append("")
 
@@ -77,6 +78,7 @@ class ApplyEngine:
         create_backup: bool = True,
         backup_dir: Path | None = None,
         in_place: bool = True,
+        backup_retention: int | None = None,
     ) -> None:
         """Apply all approved/edited decisions to the GnuCash file.
 
@@ -107,7 +109,7 @@ class ApplyEngine:
         decision_map = {d.tx_id: d for d in decisions}
         proposal_map = {p.tx_id: p for p in proposals}
 
-        approved_decisions = {
+        approved_decisions: dict[str, ReviewDecision] = {
             tx_id: dec
             for tx_id, dec in decision_map.items()
             if dec.action in ("approve", "edit")
@@ -133,11 +135,10 @@ class ApplyEngine:
         changes: dict[str, dict] = {}
         for tx_id, dec in approved_decisions.items():
             prop = proposal_map.get(tx_id)
-            is_transfer = prop and getattr(prop, "is_transfer", False)
+            # When a decision has no matching proposal (e.g. manual decision added later),
+            # we conservatively avoid changing splits and only update the description.
             if prop is None:
-                splits_for_change = []
-            elif is_transfer:
-                splits_for_change = []
+                splits_for_change: list[dict] = []
             else:
                 splits_for_change = [
                     {"account_path": sp.account_path, "amount": str(sp.amount), "memo": sp.memo}
@@ -189,12 +190,20 @@ class ApplyEngine:
             for entry in journal:
                 f.write(json.dumps(entry) + "\n")
 
+        # Optional backup retention: keep at most N backups per file when configured.
+        if create_backup and backup_retention is not None and backup_retention > 0:
+            self._prune_backups(gnucash_path, resolved_backup_dir, backup_retention)
+
         logger.info(
             "Applied %d changes; journal at %s", len(approved_decisions), journal_path
         )
 
-    def rollback(self, state_dir: Path) -> None:
-        """Restore from the most recent backup."""
+    def rollback(self, state_dir: Path, backup_name: str | None = None) -> None:
+        """Restore the GnuCash file from a backup.
+
+        When backup_name is provided, that specific file (in the state's backups
+        directory) is restored. Otherwise the most recent backup is used.
+        """
         state = StateRepository(state_dir)
         meta = state.load_metadata("run_config")
         if not meta or "gnucash_path" not in meta:
@@ -210,10 +219,30 @@ class ApplyEngine:
         if not backups:
             raise RuntimeError("No backup files found")
 
-        latest_backup = backups[-1]
+        if backup_name:
+            candidate = backup_dir / backup_name
+            if not candidate.exists():
+                raise RuntimeError(f"Backup file {candidate} not found")
+            chosen = candidate
+        else:
+            chosen = backups[-1]
+
         import shutil
-        shutil.copy2(latest_backup, gnucash_path)
-        logger.info("Rolled back %s from backup %s", gnucash_path, latest_backup)
+        shutil.copy2(chosen, gnucash_path)
+        logger.info("Rolled back %s from backup %s", gnucash_path, chosen)
+
+    def _prune_backups(self, gnucash_path: Path, backup_dir: Path, retention: int) -> None:
+        """Keep at most 'retention' backups for the given GnuCash file."""
+        backups = sorted(backup_dir.glob(f"{gnucash_path.stem}.*{gnucash_path.suffix}"))
+        if len(backups) <= retention:
+            return
+        to_delete = backups[0 : len(backups) - retention]
+        for b in to_delete:
+            try:
+                b.unlink()
+                logger.info("Deleted old backup %s to honour retention=%d", b, retention)
+            except Exception:
+                logger.warning("Failed to delete old backup %s", b, exc_info=True)
 
     def _collect_evidence_ids(self, prop) -> list[str]:
         """Gather evidence IDs from a proposal for the audit trail."""

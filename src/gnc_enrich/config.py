@@ -26,6 +26,11 @@ class LlmConfig:
     temperature: float = 0.2
     max_tokens: int = 1024
     use_web: bool = False
+    timeout_seconds: int = 180
+    # Optional separate LLM for email extraction (when set, step 1 with emails uses this first)
+    extraction_endpoint: str = ""
+    extraction_model: str = ""
+    extraction_api_key: str = ""
 
 
 @dataclass(slots=True)
@@ -40,6 +45,7 @@ class RunConfig:
     date_window_days: int = 7
     amount_tolerance: float = 0.50
     include_skipped: bool = False
+    use_llm_during_run: bool = False
     llm: LlmConfig = field(default_factory=LlmConfig)
 
 
@@ -52,6 +58,8 @@ class ApplyConfig:
     backup_dir: Path | None = None
     in_place: bool = True
     dry_run: bool = False
+    # Optional: maximum number of backups to retain per GnuCash file (None = unlimited).
+    backup_retention: int | None = None
 
 
 @dataclass(slots=True)

@@ -1,0 +1,5 @@
+Merge the following extraction results into one JSON.
+Use seller_name from the first non-empty; combine items (deduplicate by description); merge order_ids and transaction_ids arrays.
+Return only valid JSON with keys: seller_name, items, order_ids, transaction_ids.
+
+{{extractions}}

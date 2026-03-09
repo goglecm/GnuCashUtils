@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -21,7 +22,9 @@ from gnc_enrich.state.repository import StateRepository
 logger = logging.getLogger(__name__)
 
 
-def _test_llm_connection(endpoint: str, model_name: str, api_key: str) -> bool:
+def _test_llm_connection(
+    endpoint: str, model_name: str, api_key: str, timeout_seconds: int = 180
+) -> bool:
     """Send a minimal chat completion request to verify the LLM endpoint works. Returns True if OK."""
     if not endpoint or not model_name:
         logger.warning("LLM endpoint or model missing; skipping connection test")
@@ -36,7 +39,18 @@ def _test_llm_connection(endpoint: str, model_name: str, api_key: str) -> bool:
         headers = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        resp = requests.post(endpoint, json=payload, headers=headers, timeout=15)
+        user_content = payload["messages"][0]["content"]
+        query_chars = len(user_content)
+        t0 = time.perf_counter()
+        resp = requests.post(
+            endpoint, json=payload, headers=headers, timeout=timeout_seconds
+        )
+        elapsed = time.perf_counter() - t0
+        logger.info(
+            "LLM query (connection test): size=%d chars, response_time=%.2fs",
+            query_chars,
+            elapsed,
+        )
         resp.raise_for_status()
         data = resp.json()
         if "choices" in data and len(data["choices"]) > 0:
@@ -68,16 +82,32 @@ class EnrichmentPipeline:
                 config.llm.model_name or "(none)",
             )
             if not _test_llm_connection(
-                config.llm.endpoint, config.llm.model_name, config.llm.api_key
+                config.llm.endpoint,
+                config.llm.model_name,
+                config.llm.api_key,
+                config.llm.timeout_seconds,
             ):
                 logger.warning("LLM connection test failed; pipeline will continue but LLM calls may fail")
+            if getattr(config.llm, "extraction_endpoint", "") and getattr(config.llm, "extraction_model", ""):
+                logger.info(
+                    "Extraction LLM enabled: endpoint=%s model=%s",
+                    config.llm.extraction_endpoint,
+                    config.llm.extraction_model,
+                )
+                if not _test_llm_connection(
+                    config.llm.extraction_endpoint,
+                    config.llm.extraction_model,
+                    getattr(config.llm, "extraction_api_key", "") or "",
+                    config.llm.timeout_seconds,
+                ):
+                    logger.warning("Extraction LLM connection test failed; will use raw emails for categorisation")
         else:
             logger.info("LLM disabled; using ML/heuristics and OCR only")
         proposals = self.build_proposals(config)
 
         state = StateRepository(config.state_dir)
         state.save_proposals(proposals)
-        state.save_metadata("run_config", {
+        meta = {
             "gnucash_path": str(config.gnucash_path),
             "emails_dir": str(config.emails_dir),
             "receipts_dir": str(config.receipts_dir),
@@ -85,7 +115,13 @@ class EnrichmentPipeline:
             "llm_mode": config.llm.mode.value,
             "llm_endpoint": config.llm.endpoint,
             "llm_model": config.llm.model_name,
-        })
+        }
+        if getattr(config.llm, "extraction_endpoint", ""):
+            meta["llm_extraction_endpoint"] = config.llm.extraction_endpoint
+            meta["llm_extraction_model"] = getattr(config.llm, "extraction_model", "")
+            meta["llm_extraction_api_key"] = getattr(config.llm, "extraction_api_key", "") or ""
+        meta["llm_use_web"] = getattr(config.llm, "use_web", False)
+        state.save_metadata("run_config", meta)
 
         skipped = state.load_skipped_ids()
         return PipelineResult(
@@ -126,13 +162,25 @@ class EnrichmentPipeline:
 
         email_index = EmailIndexRepository()
         if config.emails_dir.exists():
-            email_index.build_or_load(
-                config.emails_dir,
-                config.state_dir,
-                min_date=min_email_date,
-            )
+            try:
+                email_index.build_or_load(
+                    config.emails_dir,
+                    config.state_dir,
+                    min_date=min_email_date,
+                )
+            except Exception:
+                logger.warning(
+                    "Email indexing failed; continuing without email evidence (dir=%s)",
+                    config.emails_dir,
+                    exc_info=True,
+                )
+                # In case the repository was left in a partial state, reinitialise it.
+                email_index = EmailIndexRepository()
         else:
-            logger.info("Emails directory does not exist: %s — skipping email indexing", config.emails_dir)
+            logger.info(
+                "Emails directory does not exist: %s — skipping email indexing",
+                config.emails_dir,
+            )
 
         receipt_repo = ReceiptRepository()
         receipt_files = receipt_repo.list_unprocessed(config.receipts_dir) if config.receipts_dir.exists() else []
@@ -163,6 +211,7 @@ class EnrichmentPipeline:
         predictor = CategoryPredictor(
             historical_transactions=historical,
             llm_config=config.llm,
+            prompts_dir=config.state_dir / "prompts",
         )
 
         proposals: list[Proposal] = []
@@ -178,13 +227,17 @@ class EnrichmentPipeline:
                 len(matched_emails),
                 matched_receipt.evidence_id if matched_receipt else "none",
             )
-            proposal = predictor.propose(tx, matched_emails, matched_receipt)
-            proposal = dataclasses.replace(proposal, is_transfer=getattr(tx, "is_unsettled_transfer", False))
+            proposal = predictor.propose(
+                tx,
+                matched_emails,
+                matched_receipt,
+                account_paths=account_paths,
+                skip_llm=not config.use_llm_during_run,
+            )
             logger.debug(
-                "  Proposal: category=%s confidence=%.2f transfer=%s",
+                "  Proposal: category=%s confidence=%.2f",
                 proposal.suggested_splits[0].account_path if proposal.suggested_splits else "?",
                 proposal.confidence,
-                proposal.is_transfer,
             )
             proposals.append(proposal)
 

@@ -3,19 +3,19 @@
 {% block content %}
 
 <p style="color:var(--muted);font-size:0.9rem;margin-bottom:1rem;">
-    Only Unspecified/Imbalance-GBP transactions are shown. {{ expense_proposals|length }} to categorise (expenses), {{ transfer_proposals|length }} likely transfers (one leg to own account) — {{ total }} total. {{ pending }} pending. Settled transfers (both legs already to bank/asset) are not listed.
+    Only Unspecified/Imbalance-GBP transactions are shown. {{ proposals|length }} to categorise — {{ total }} total. {{ pending }} pending.
 </p>
 
 <div class="card">
-    <h2>To categorise (expenses)</h2>
-    {% for p in expense_proposals %}
+    <h2>To categorise</h2>
+    {% for p in proposals %}
     <div class="queue-item" style="flex-direction:column;align-items:stretch;gap:0.25rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div>
                 <a href="{{ url_for('review', proposal_id=p.proposal_id) }}">
                     {% if p.tx_date %}{{ p.tx_date.strftime('%d/%m/%Y') }}{% endif %}
                     &mdash;
-                    {% if p.tx_amount is not none %}&pound;{{ p.tx_amount }}{% endif %}
+                    {% if p.tx_amount is not none %}&pound;{{ p.tx_amount | money }}{% endif %}
                 </a>
                 <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ (p.original_description or '')[:60] }}</span>
             </div>
@@ -30,41 +30,13 @@
         </div>
         {% if p.original_splits %}
         <div style="font-size:0.8rem;color:var(--muted);">
-            Splits: {% for s in p.original_splits %}{{ s.account_path }} &pound;{{ s.amount }}{% if s.memo %} <em>({{ s.memo }})</em>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+            Splits: {% for s in p.original_splits %}{{ s.account_path }} &pound;{{ s.amount | money }}{% if s.memo %} <em>({{ s.memo }})</em>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
         </div>
         {% endif %}
     </div>
     {% endfor %}
-    {% if not expense_proposals %}
-    <p style="color:var(--muted);">No expense proposals.</p>
-    {% endif %}
-</div>
-
-<div class="card">
-    <h2>Likely transfers (one leg Unspecified/Imbalance)</h2>
-    {% for p in transfer_proposals %}
-    <div class="queue-item" style="flex-direction:column;align-items:stretch;gap:0.25rem;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div>
-                <a href="{{ url_for('review', proposal_id=p.proposal_id) }}">
-                    {% if p.tx_date %}{{ p.tx_date.strftime('%d/%m/%Y') }}{% endif %}
-                    &mdash;
-                    {% if p.tx_amount is not none %}&pound;{{ p.tx_amount }}{% endif %}
-                </a>
-                <span style="color:var(--muted);margin-left:0.5rem;font-size:0.85rem;">{{ (p.original_description or '')[:60] }}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.5rem;">
-                {% if p.tx_id in decided_ids %}
-                <span class="status-decided">Decided</span>
-                {% else %}
-                <span class="status-pending">Pending</span>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-    {% if not transfer_proposals %}
-    <p style="color:var(--muted);">No likely transfers.</p>
+    {% if not proposals %}
+    <p style="color:var(--muted);">No proposals.</p>
     {% endif %}
 </div>
 
@@ -77,7 +49,7 @@
             <span class="status-decided">Approved</span>
         </div>
         <div style="font-size:0.85rem;color:var(--muted);">
-            {% for s in dec.final_splits %}{{ s.account_path }} &pound;{{ s.amount }}{% if not loop.last %}; {% endif %}{% endfor %}
+            {% for s in dec.final_splits %}{{ s.account_path }} &pound;{{ s.amount | money }}{% if not loop.last %}; {% endif %}{% endfor %}
         </div>
     </div>
     {% endfor %}

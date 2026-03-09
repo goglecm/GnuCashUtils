@@ -5,6 +5,8 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from gnc_enrich.domain.models import Split, Transaction
 from gnc_enrich.gnucash.loader import GnuCashLoader, GnuCashWriter
 
@@ -61,6 +63,29 @@ class TestGnuCashLoader:
         assert "Unspecified" in names
         assert "Imbalance-GBP" in names
         assert "Food" in names
+
+    def test_get_tree_returns_none_before_load(self) -> None:
+        """get_tree() returns None when no file has been loaded (graceful accessor)."""
+        loader = GnuCashLoader()
+        assert loader.get_tree() is None
+
+    def test_get_account_path_returns_empty_for_unknown_id(self, sample_gnucash_path: Path) -> None:
+        """get_account_path(unknown_id) returns empty string (non-fatal, spec-aligned)."""
+        loader = GnuCashLoader()
+        loader.load_transactions(sample_gnucash_path)
+        assert loader.get_account_path("unknown-guid") == ""
+        assert loader.get_account_path("") == ""
+
+    def test_load_transactions_raises_when_no_gnc_book(self, tmp_path: Path) -> None:
+        """load_transactions raises ValueError when XML has no <gnc:book> (invalid file)."""
+        invalid_xml = tmp_path / "no_book.xml"
+        invalid_xml.write_text(
+            '<?xml version="1.0"?><gnc-v2 xmlns:gnc="http://www.gnucash.org/XML/gnc"><gnc:count-data>1</gnc:count-data></gnc-v2>',
+            encoding="utf-8",
+        )
+        loader = GnuCashLoader()
+        with pytest.raises(ValueError, match="No.*gnc:book"):
+            loader.load_transactions(invalid_xml)
 
 
 class TestCandidateFiltering:
@@ -250,3 +275,15 @@ class TestGnuCashWriter:
         output = writer.write_changes(sample_gnucash_path, tree, {}, in_place=False)
         assert output != sample_gnucash_path
         assert output.exists()
+
+    def test_write_changes_raises_when_tree_has_no_book(self, tmp_path: Path) -> None:
+        """write_changes raises ValueError when tree has no <gnc:book> (graceful failure)."""
+        from lxml import etree
+
+        root = etree.fromstring('<?xml version="1.0"?><gnc-v2 xmlns:gnc="http://www.gnucash.org/XML/gnc"></gnc-v2>')
+        tree = etree.ElementTree(root)
+        source = tmp_path / "dummy.gnucash"
+        source.write_text("", encoding="utf-8")
+        writer = GnuCashWriter()
+        with pytest.raises(ValueError, match="No.*gnc:book"):
+            writer.write_changes(source, tree, {}, in_place=True)

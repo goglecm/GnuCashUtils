@@ -1,6 +1,8 @@
 # Test Plan & Strategy (v1)
 
-## Status: Implemented — 302 tests passing
+## Status: Implemented — see `pytest` for current count
+
+**How to add tests and when to update this document**: see `docs/developers_guide.mdc` (§ How to Add Tests, § Keeping Documentation and Spec Up to Date). After adding tests or a new test file, update the Test Matrix and Spec coverage below so they stay accurate.
 
 ## Objectives
 - Provide immediate, repeatable confidence that all modules work correctly.
@@ -28,32 +30,37 @@
 
 ## Test Matrix
 
-| Test File | Count | Modules Covered |
-|-----------|-------|-----------------|
-| `test_config_and_domain.py` | 12 | `config`, `domain/models` |
-| `test_state_repository.py` | 16 | `state/repository` (incl. Proposal original/None fields roundtrip) |
-| `test_gnucash_loader.py` | 21 | `gnucash/loader` (load, filter, transfer only when description suggests it, backup, write) |
-| `test_email_pipeline.py` | 33 | `email/parser` (body filtering incl. style/CSS strip, entity decoding), `email/index` |
-| `test_receipt_pipeline.py` | 17 | `receipt/ocr`, `receipt/repository` |
-| `test_matching.py` | 22 | `matching/email_matcher` (incl. tolerance-zero, no-amount/empty-amount exclusion), `matching/receipt_matcher` |
-| `test_ml_predictor.py` | 15 | `ml/predictor` (CategoryPredictor, FeedbackTrainer) |
-| `test_pipeline.py` | 10 | `services/pipeline` (account_paths saved, LLM connection test, email index min_date) |
-| `test_apply_engine.py` | 15 | `apply/engine` (dry-run, apply, journal, rollback, audit, receipt not moved on amount mismatch) |
-| `test_review.py` | 24 | `review/service` (get_account_paths), `review/webapp` (review page, category dropdown, decide with create-new) |
-| `test_integration.py` | 3 | Full cycle: run->review->apply, Flask flow, CLI dispatch |
-| `test_cli.py` | 4 | `cli` (parser, flags, LLM args); `test_cli_flags.py` covers `--llm-use-web` |
-| `test_new_features.py` | 39 | Recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
-| `test_system.py` | 17 | Full system tests: pipeline with multi-subdir emails, review cycle, apply+rollback, Flask webapp |
-| `test_cli_flags.py` | 37 | Every CLI flag: verbose, run/review/apply flags, --llm-use-web, dispatch integration tests |
-| `test_system_scenarios.py` | 11 | Scenarios: imbalance-only, zero candidates, date window, multiple receipts, nested emails, empty book, realistic format |
+The table below maps test files to the areas they cover. For the current number of tests, see the output of `pytest`.
+
+| Test File | Modules / Behaviour Covered |
+|-----------|-----------------------------|
+| `test_config_and_domain.py` | `config`, `domain/models` (config defaults, domain model creation, enum values) |
+| `test_state_repository.py` | `state/repository` (JSON/JSONL persistence; Proposal roundtrip; load_decisions / load_skipped_ids / load_audit_log skip corrupt or invalid lines) |
+| `test_gnucash_loader.py` | `gnucash/loader` (XML load/write, candidate filtering by Unspecified/Imbalance-GBP, backup) |
+| `test_email_pipeline.py` | `email/parser` (body filtering, parse raises when file missing), `email/index` (build_or_load skips corrupt index lines and unparseable `.eml`) |
+| `test_receipt_pipeline.py` | `receipt/ocr`, `receipt/repository` |
+| `test_matching.py` | `matching/email_matcher` (incl. tolerance-zero, no-amount/empty-amount exclusion), `matching/receipt_matcher` |
+| `test_prompts.py` | `prompts` (prompt directory selection, template loading precedence, placeholder rendering) |
+| `test_ml_predictor.py` | `ml/predictor` (CategoryPredictor; §6.3 LLM: `_run_llm_flow` no paths / step1 None, no emails, extraction block; `run_llm_check` returns None on flow fail; `propose` `skip_llm`; `_query_llm` → `LlmSuggestion`; `get_emails_for_display`; subcategory formatting; extraction dict-only; `FeedbackTrainer`) |
+| `test_llm_flow_cross_product.py` | `ml/predictor` LLM cross-product behaviour (main on/off, extraction on/off, `use_web` on/off, has_emails yes/no) |
+| `test_pipeline.py` | `services/pipeline` (account_paths metadata, `run_config` LLM/extraction persistence, LLM connection test, email index min_date; behaviour when GnuCash has no `<gnc:book>` element) |
+| `test_apply_engine.py` | `apply/engine` (dry-run incl. no decisions, apply, journal, rollback, audit; apply raises when no `run_config` / invalid GnuCash; rollback raises when no backup dir / no backup files; receipt not moved on amount mismatch) |
+| `test_review.py` | `review/service` (get_account_paths, `run_llm_check` preserves ML and returns None when predictor fails; `submit_decision` saves unenriched when enrichment raises), `review/webapp` (review page, ML/LLM sections, `llm-check` 404/400/200; review 200 with empty emails when display build raises; `llm-check` 200 with `extraction: null` when serialisation fails; decide 400 for invalid action, 503 when save fails) |
+| `test_integration.py` | Full run → review → apply cycle, Flask flow, CLI dispatch |
+| `test_cli.py`, `test_cli_flags.py` | `cli` (parser, flags, LLM args; `--llm-use-web`; run/review/apply flags; dispatch integration tests) |
+| `test_new_features.py` | New behaviours: recursive emails, new categories, evidence enrichment, terse items, evidence approval, no-evidence, refund detection, schema versions, enrichment wiring, corner cases |
+| `test_system.py` | Full system tests: pipeline with multi-subdir emails, review cycle, apply+rollback, Flask webapp |
+| `test_system_scenarios.py` | Scenarios: imbalance-only, zero candidates, date window, multiple receipts, nested emails, empty book, realistic format |
 
 ## Spec coverage (key requirements)
 
 The test suite exercises all functional requirements from the main specification:
 
-- **§3 Domain rules**: Target tx (Unspecified/Imbalance-GBP at any path segment), GBP-only, future excluded, transfers separate queue, apply transfer description-only, skip persist/reload — `test_gnucash_loader`, `test_apply_engine`, `test_pipeline`, `test_review`.
+- **§3 Domain rules**: Target tx (Unspecified/Imbalance-GBP at any path segment), GBP-only, future excluded, skip persist/reload — `test_gnucash_loader`, `test_apply_engine`, `test_pipeline`, `test_review`.
 - **§6–7 Components & evidence**: GnuCash load/write, candidate filter, email parse/index (min_date from earliest Unspecified/Imbalance-GBP tx), receipt OCR/match, ML prediction, review UI (queue, prev/next, evidence), apply (dry-run, backup, audit, journal, rollback), receipt moved only when amount-compatible — `test_gnucash_loader`, `test_email_pipeline`, `test_receipt_pipeline`, `test_matching`, `test_ml_predictor`, `test_pipeline`, `test_review`, `test_apply_engine`, `test_new_features`.
+- **§6.3 LLM interaction architecture**: Entry points (run skip_llm, review "Check with LLM"); single flow (_run_llm_flow: extraction optional, step1/step2, None on failure); run_llm_check returns None when flow fails (API 400, proposal not updated); config from run_config; extraction serialization in API — `test_ml_predictor`, `test_review`, `test_pipeline`.
 - **§9–10 Review & write**: One-by-one review, before/after, approve/edit/skip, no write without approval, backup/rollback — `test_review`, `test_apply_engine`, `test_integration`.
+- **Error handling / graceful degradation**: State repository skips corrupt JSONL lines (decisions, skipped IDs, audit log); GnuCash loader get_tree/get_account_path defaults; email index build skips corrupt index lines and unparseable .eml; review enrichment failure non-fatal (decision saved); review page and llm-check handle display/serialization errors without 5xx — `test_state_repository`, `test_gnucash_loader`, `test_email_pipeline`, `test_review`.
 - **§15 Acceptance criteria**: All 14 criteria are covered by the above plus `test_integration`, `test_system`, `test_system_scenarios`, `test_cli_flags`.
 
 ## Fixtures

@@ -5,6 +5,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from gnc_enrich.config import RunConfig
 from gnc_enrich.services.pipeline import EnrichmentPipeline, _test_llm_connection
 from gnc_enrich.state.repository import StateRepository
@@ -130,6 +132,39 @@ def test_run_config_metadata_saved(tmp_path: Path) -> None:
     assert "gnucash_path" in meta
 
 
+def test_run_config_persists_llm_and_extraction_when_set(tmp_path: Path) -> None:
+    """Run metadata includes LLM mode/endpoint/model and extraction endpoint/model when configured (spec §5, §13)."""
+    from gnc_enrich.config import LlmConfig, LlmMode
+
+    dirs = _setup_pipeline_dirs(tmp_path)
+    config = RunConfig(
+        gnucash_path=dirs["gnucash"],
+        emails_dir=dirs["emails"],
+        receipts_dir=dirs["receipts"],
+        processed_receipts_dir=dirs["processed"],
+        state_dir=dirs["state"],
+        llm=LlmConfig(
+            mode=LlmMode.ONLINE,
+            endpoint="http://llm:8080",
+            model_name="test-model",
+            use_web=True,
+            extraction_endpoint="http://extract:8080",
+            extraction_model="extract-model",
+        ),
+    )
+    EnrichmentPipeline().run(config)
+
+    state = StateRepository(dirs["state"])
+    meta = state.load_metadata("run_config")
+    assert meta is not None
+    assert meta.get("llm_mode") == "online"
+    assert meta.get("llm_endpoint") == "http://llm:8080"
+    assert meta.get("llm_model") == "test-model"
+    assert meta.get("llm_use_web") is True
+    assert meta.get("llm_extraction_endpoint") == "http://extract:8080"
+    assert meta.get("llm_extraction_model") == "extract-model"
+
+
 def test_account_paths_saved_after_pipeline_run(tmp_path: Path) -> None:
     """Pipeline persists GnuCash account paths to state for review UI dropdown."""
     dirs = _setup_pipeline_dirs(tmp_path)
@@ -153,6 +188,39 @@ def test_proposals_have_evidence(tmp_path: Path) -> None:
     for p in proposals:
         assert p.evidence is not None
         assert p.confidence > 0
+
+
+def test_build_proposals_raises_when_gnucash_has_no_book(tmp_path: Path) -> None:
+    """When GnuCash file has no <gnc:book>, build_proposals raises ValueError (invalid file)."""
+    invalid = tmp_path / "invalid.gnucash"
+    invalid.write_text('<?xml version="1.0"?><root><other/></root>', encoding="utf-8")
+    dirs = _setup_pipeline_dirs(tmp_path)
+    config = RunConfig(
+        gnucash_path=invalid,
+        emails_dir=dirs["emails"],
+        receipts_dir=dirs["receipts"],
+        processed_receipts_dir=dirs["processed"],
+        state_dir=dirs["state"],
+    )
+    pipeline = EnrichmentPipeline()
+    with pytest.raises(ValueError, match="gnc:book|No.*book"):
+        pipeline.build_proposals(config)
+
+
+def test_run_raises_when_gnucash_has_no_book(tmp_path: Path) -> None:
+    """When GnuCash file has no <gnc:book>, run() propagates ValueError."""
+    invalid = tmp_path / "invalid.gnucash"
+    invalid.write_text('<?xml version="1.0"?><root><other/></root>', encoding="utf-8")
+    dirs = _setup_pipeline_dirs(tmp_path)
+    config = RunConfig(
+        gnucash_path=invalid,
+        emails_dir=dirs["emails"],
+        receipts_dir=dirs["receipts"],
+        processed_receipts_dir=dirs["processed"],
+        state_dir=dirs["state"],
+    )
+    with pytest.raises(ValueError, match="gnc:book|No.*book"):
+        EnrichmentPipeline().run(config)
 
 
 def test_email_index_min_date_uses_earliest_expense_candidate(tmp_path: Path) -> None:

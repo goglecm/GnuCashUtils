@@ -117,6 +117,11 @@ class Proposal:
     original_splits: list[Split] = field(default_factory=list)
     confidence_breakdown: list[str] = field(default_factory=list)
     is_transfer: bool = False
+    # Populated when user runs "Check with LLM" in review
+    llm_confidence: float | None = None
+    llm_category: str | None = None
+    llm_description: str | None = None
+    extraction_result: dict | None = None  # seller_name, seller_web_description, items, order_ids, etc.
 
 
 @dataclass(slots=True)

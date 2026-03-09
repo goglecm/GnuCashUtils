@@ -1,0 +1,6 @@
+Extract from the following email and return only valid JSON.
+Fields: seller_name (string), items (array of {description, amount} per line item), order_ids (array of strings), transaction_ids (array of strings).
+Use empty array/string if not found. Amounts as numbers or strings.
+
+--- Email ---
+{{email_context}}
