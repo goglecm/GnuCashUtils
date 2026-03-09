@@ -70,7 +70,11 @@ def test_main_invokes_run_and_returns_zero() -> None:
     from unittest.mock import patch
 
     with patch("gnc_enrich.services.pipeline.EnrichmentPipeline") as mock_pipeline:
-        mock_pipeline.return_value.run.return_value = type("R", (), {"proposal_count": 2, "skipped_count": 0})()
+        mock_pipeline.return_value.run.return_value = type(
+            "R",
+            (),
+            {"proposal_count": 2, "skipped_count": 0},
+        )()
         rc = main(
             [
                 "run",

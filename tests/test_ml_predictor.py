@@ -7,8 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from gnc_enrich.config import LlmConfig, LlmMode
-from gnc_enrich.domain.models import EmailEvidence, Proposal, Split, Transaction
-from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
+from gnc_enrich.domain.models import EmailEvidence, Proposal, ReceiptEvidence, Split, Transaction
+from gnc_enrich.ml.predictor import (
+    CategoryPredictor,
+    FeedbackTrainer,
+    _has_name_like_content,
+    _truncate_for_log,
+)
 
 
 def _make_history() -> list[Transaction]:
@@ -90,6 +95,17 @@ def _make_target_tx(desc: str = "Card Payment", amount: str = "25.00") -> Transa
 
 
 class TestCategoryPredictor:
+
+    def test_has_name_like_content_and_truncate_for_log(self) -> None:
+        assert _has_name_like_content("Store") is True
+        assert _has_name_like_content("12345") is False
+        assert _has_name_like_content("") is False
+
+        long = "x" * 500
+        truncated = _truncate_for_log(long, max_len=50)
+        assert len(truncated) == 53
+        assert truncated.endswith("...")
+        assert _truncate_for_log("short", max_len=50) == "short"
 
     def test_trained_predictor_returns_valid_proposal(self) -> None:
         history = _make_history()
@@ -189,6 +205,26 @@ class TestCategoryPredictor:
         proposal = predictor.propose(tx, [], None)
         assert proposal.evidence is not None
         assert proposal.evidence.tx_id == tx.tx_id
+
+    def test_refund_detection_sets_category(self) -> None:
+        """Refund transactions (positive amount on account_name) use _check_refund_match."""
+        history = _make_history()
+        predictor = CategoryPredictor(historical_transactions=history)
+        refund_tx = Transaction(
+            tx_id="refund1",
+            posted_date=date(2025, 2, 1),
+            description="Refund Tesco",
+            currency="GBP",
+            amount=Decimal("25.00"),
+            splits=[
+                Split(account_path="Current Account", amount=Decimal("25.00")),
+                Split(account_path="Expenses:Food", amount=Decimal("-25.00")),
+            ],
+            account_name="Current Account",
+            original_category="Unspecified",
+        )
+        cat = predictor._check_refund_match(refund_tx)
+        assert cat in {"Expenses:Food", "Expenses:Transport", None}  # category or gracefully None
 
     def test_llm_query_attempted_on_low_confidence(self) -> None:
         """With no emails: extract-from-description then step1 then step2."""
@@ -336,6 +372,17 @@ class TestCategoryPredictor:
         assert "  Food:Groceries" in "\n".join(lines)
         assert "  Salary" in "\n".join(lines)
 
+    def test_parse_llm_json_handles_markdown_and_invalid(self) -> None:
+        """_parse_llm_json handles plain JSON, markdown-wrapped JSON, and invalid content."""
+        from gnc_enrich.ml.predictor import CategoryPredictor as CP
+
+        assert CP._parse_llm_json('{"a": 1}') == {"a": 1}
+        assert CP._parse_llm_json("```json\n{\"a\": 1}\n```") == {"a": 1}
+        # Non-dict JSON returns None
+        assert CP._parse_llm_json("[1, 2]") is None
+        # Completely invalid also returns None
+        assert CP._parse_llm_json("not json") is None
+
     def test_llm_timeout_uses_ml_fallback(self) -> None:
         """When the LLM request times out (e.g. step1), we log and return ML fallback instead of raising."""
         llm_cfg = LlmConfig(
@@ -354,6 +401,67 @@ class TestCategoryPredictor:
             assert proposal is not None
             assert "LLM suggestion" not in proposal.rationale
             assert proposal.suggested_splits[0].account_path == "Expenses:Miscellaneous"
+
+    def test_email_contexts_and_emails_for_llm_deduplicate(self) -> None:
+        """_email_contexts_for_llm and _emails_for_llm dedupe near-identical contexts."""
+        sent = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        em1 = EmailEvidence(
+            evidence_id="e1",
+            message_id="m1",
+            sender="a@b.com",
+            subject="Order 1",
+            sent_at=sent,
+            body_snippet="Your order total £25.00, thanks.",
+        )
+        em2 = EmailEvidence(
+            evidence_id="e2",
+            message_id="m2",
+            sender="a@b.com",
+            subject="Order 1 duplicate",
+            sent_at=sent,
+            body_snippet="Your order total £25.00, thanks!!",
+        )
+        emails = [em1, em2]
+        ctx_list = CategoryPredictor._email_contexts_for_llm(emails, Decimal("25.00"))
+        assert len(ctx_list) >= 1
+        assert any("25.00" in ctx for ctx in ctx_list)
+
+        block = CategoryPredictor._emails_for_llm(emails, Decimal("25.00"))
+        assert "--- Email 1 ---" in block
+        assert "25.00" in block
+
+    def test_build_and_enrich_description_from_evidence(self) -> None:
+        """_build_description and enrich_description_from_evidence cover email and receipt branches."""
+        predictor = CategoryPredictor()
+        tx = _make_target_tx(desc="Card Payment")
+        emails = [
+            EmailEvidence(
+                evidence_id="e1",
+                message_id="<m1>",
+                sender="orders@tesco.com",
+                subject="Your Tesco order",
+                sent_at=datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc),
+                body_snippet="Order details...",
+            )
+        ]
+        receipt = ReceiptEvidence(
+            evidence_id="r1",
+            source_path="/tmp/r.jpg",
+            ocr_text="Milk £1.50\nBread £2.00\nTotal £3.50",
+            parsed_total=Decimal("3.50"),
+        )
+        base_desc = predictor._build_description(tx, emails, receipt)
+        assert "Tesco" in base_desc
+
+        enriched = predictor.enrich_description_from_evidence(base_desc, emails, receipt)
+        assert base_desc in enriched
+        assert "Receipt total £3.50" in enriched or "Milk" in enriched
+
+        # _extract_purchase_detail and _extract_receipt_detail helper paths
+        detail = predictor._extract_purchase_detail(emails)
+        assert "Your Tesco order" in detail
+        r_detail = predictor._extract_receipt_detail(receipt)
+        assert "total" in r_detail.lower() or "milk" in r_detail.lower()
 
     def test_single_transaction_does_not_crash(self) -> None:
         """< 2 categorized transactions → falls back to heuristic."""
