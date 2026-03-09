@@ -9,14 +9,7 @@ from pathlib import Path
 import pytest
 
 from gnc_enrich.apply.engine import ApplyEngine
-from gnc_enrich.domain.models import (
-    EvidencePacket,
-    Proposal,
-    ReceiptEvidence,
-    ReviewDecision,
-    SkipRecord,
-    Split,
-)
+from gnc_enrich.domain.models import EvidencePacket, Proposal, ReceiptEvidence, ReviewDecision, Split
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.state.repository import StateRepository
 from tests.conftest import SAMPLE_GNUCASH_XML
@@ -184,7 +177,7 @@ class TestApply:
 
         journal_path = state_dir / "apply_journal.jsonl"
         assert journal_path.exists()
-        entries = [json.loads(l) for l in journal_path.read_text().splitlines() if l.strip()]
+        entries = [json.loads(line) for line in journal_path.read_text().splitlines() if line.strip()]
         data_entries = [e for e in entries if "_schema_version" not in e]
         assert len(data_entries) == 3  # approved + edited + transfer
         tx_ids = {e["tx_id"] for e in data_entries}
@@ -225,8 +218,8 @@ class TestApply:
 
         journal_path = state_dir / "apply_journal.jsonl"
         entries = [
-            json.loads(l) for l in journal_path.read_text().splitlines()
-            if l.strip() and '"_schema_version"' not in l
+            json.loads(line) for line in journal_path.read_text().splitlines()
+            if line.strip() and '"_schema_version"' not in line
         ]
         tx1_entry = next(e for e in entries if e["tx_id"] == "tx_unspec1")
         assert tx1_entry["original_description"] == "Card Payment"

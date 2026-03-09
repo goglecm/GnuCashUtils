@@ -7,11 +7,8 @@ different code paths in the pipeline.
 from __future__ import annotations
 
 import gzip
-import json
-from decimal import Decimal
 from pathlib import Path
 
-import pytest
 from PIL import Image, ImageDraw
 
 from gnc_enrich.config import RunConfig

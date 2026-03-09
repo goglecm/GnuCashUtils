@@ -1,7 +1,7 @@
 """Tests for EML parsing and email index repository."""
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -162,8 +162,8 @@ class TestEmailIndexRepository:
 
         index_file = tmp_path / "email_index.jsonl"
         assert index_file.exists()
-        lines = [l for l in index_file.read_text().splitlines() if l.strip()]
-        data_lines = [l for l in lines if '"_schema_version"' not in l]
+        lines = [line for line in index_file.read_text().splitlines() if line.strip()]
+        data_lines = [line for line in lines if '"_schema_version"' not in line]
         assert len(data_lines) == 13
 
     def test_incremental_update(self, tmp_path: Path) -> None:
@@ -217,8 +217,10 @@ class TestEmailIndexRepository:
         min_date = date(2025, 1, 20)
         repo.build_or_load(emails_dir, tmp_path, min_date=min_date)
         assert len(repo.entries) == 0
-        lines = [l for l in (tmp_path / "email_index.jsonl").read_text().splitlines() if l.strip()]
-        data_lines = [l for l in lines if '"_schema_version"' not in l]
+        lines = [
+            line for line in (tmp_path / "email_index.jsonl").read_text().splitlines() if line.strip()
+        ]
+        data_lines = [line for line in lines if '"_schema_version"' not in line]
         assert len(data_lines) == 1
 
     def test_search_by_text_tokens(self, tmp_path: Path) -> None:
@@ -280,9 +282,9 @@ class TestEmailIndexRepository:
         # but both files are recorded in the manifest so they are not reindexed.
         assert len(repo.entries) == 1
         index_lines = [
-            l
-            for l in (tmp_path / "email_index.jsonl").read_text(encoding="utf-8").splitlines()
-            if l.strip() and '"_schema_version"' not in l
+            line
+            for line in (tmp_path / "email_index.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip() and '"_schema_version"' not in line
         ]
         assert len(index_lines) == 1
         manifest = json.loads((tmp_path / "email_index_manifest.json").read_text(encoding="utf-8"))

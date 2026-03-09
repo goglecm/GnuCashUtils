@@ -4,16 +4,10 @@ import requests
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from gnc_enrich.config import LlmConfig, LlmMode
-from gnc_enrich.domain.models import (
-    EmailEvidence,
-    Proposal,
-    ReceiptEvidence,
-    Split,
-    Transaction,
-)
+from gnc_enrich.domain.models import EmailEvidence, Proposal, Split, Transaction
 from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
 
 

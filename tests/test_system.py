@@ -8,16 +8,13 @@ and the complete run -> review -> apply cycle.
 from __future__ import annotations
 
 import gzip
-import json
-from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
-from gnc_enrich.config import LlmConfig, LlmMode, RunConfig
+from gnc_enrich.config import RunConfig
 from gnc_enrich.domain.models import ReviewDecision, Split
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.review.service import ReviewQueueService
@@ -257,7 +254,11 @@ class TestSystemPipeline:
 
         index_path = system_env["state_dir"] / "email_index.jsonl"
         assert index_path.exists()
-        lines = [l for l in index_path.read_text().splitlines() if l.strip() and '"_schema_version"' not in l]
+        lines = [
+            line
+            for line in index_path.read_text().splitlines()
+            if line.strip() and '"_schema_version"' not in line
+        ]
         assert len(lines) >= 8
 
     def test_pipeline_produces_proposals_for_all_candidates(self, system_env: dict[str, Path]) -> None:
@@ -488,7 +489,6 @@ class TestSystemApply:
         loader = GnuCashLoader()
         txs_after = loader.load_transactions(system_env["gnucash_path"])
         changed_tx = next(t for t in txs_after if t.tx_id == "tx_cand_tesco")
-        modified_desc = changed_tx.description
 
         engine.rollback(system_env["state_dir"])
 

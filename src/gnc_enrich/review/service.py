@@ -9,15 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from gnc_enrich.config import LlmConfig, LlmMode
-from gnc_enrich.domain.models import (
-    EmailEvidence,
-    Proposal,
-    ReceiptEvidence,
-    ReviewDecision,
-    SkipRecord,
-    Split,
-    Transaction,
-)
+from gnc_enrich.domain.models import EmailEvidence, Proposal, ReceiptEvidence, ReviewDecision, SkipRecord, Transaction
 from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.state.repository import StateRepository

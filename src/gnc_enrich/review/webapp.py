@@ -7,8 +7,6 @@ import os
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from datetime import date
-
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 from gnc_enrich.config import ReviewConfig
