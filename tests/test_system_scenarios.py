@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from gnc_enrich.config import RunConfig
-from gnc_enrich.domain.models import ReviewDecision, Split
+from gnc_enrich.domain.models import ReviewDecision
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.review.service import ReviewQueueService
 from gnc_enrich.services.pipeline import EnrichmentPipeline

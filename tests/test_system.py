@@ -488,7 +488,7 @@ class TestSystemApply:
 
         loader = GnuCashLoader()
         txs_after = loader.load_transactions(system_env["gnucash_path"])
-        changed_tx = next(t for t in txs_after if t.tx_id == "tx_cand_tesco")
+        assert any(t.tx_id == "tx_cand_tesco" for t in txs_after)
 
         engine.rollback(system_env["state_dir"])
 

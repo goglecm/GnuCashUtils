@@ -5,7 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from gnc_enrich.apply.engine import ApplyEngine
-from gnc_enrich.config import ReviewConfig, RunConfig
+from gnc_enrich.config import RunConfig
 from gnc_enrich.domain.models import ReviewDecision, Split
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.review.service import ReviewQueueService
