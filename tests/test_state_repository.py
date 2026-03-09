@@ -110,12 +110,16 @@ def test_proposal_none_fields_roundtrip(tmp_path) -> None:
     """Proposals with None tx_date/tx_amount must survive serialization."""
     repo = StateRepository(tmp_path)
     prop = Proposal(
-        proposal_id="pn", tx_id="txn",
+        proposal_id="pn",
+        tx_id="txn",
         suggested_description="Unknown",
         suggested_splits=[Split(account_path="Expenses:Misc", amount=Decimal("5.00"))],
-        confidence=0.5, rationale="test",
-        tx_date=None, tx_amount=None,
-        original_description="", original_splits=[],
+        confidence=0.5,
+        rationale="test",
+        tx_date=None,
+        tx_amount=None,
+        original_description="",
+        original_splits=[],
     )
     repo.save_proposals([prop])
     loaded = repo.load_proposals()[0]
@@ -128,21 +132,30 @@ def test_proposal_none_fields_roundtrip(tmp_path) -> None:
 def test_proposal_extraction_result_items_sanitized_on_load(tmp_path) -> None:
     """Loading proposals with extraction_result.items containing non-dicts sanitizes to dicts only."""
     import json
+
     repo = StateRepository(tmp_path)
     # Simulate legacy state: extraction_result with a list item (invalid)
     raw = {
         "schema_version": 1,
         "proposals": [
             {
-                "proposal_id": "p1", "tx_id": "tx1",
+                "proposal_id": "p1",
+                "tx_id": "tx1",
                 "suggested_description": "Test",
                 "suggested_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
-                "confidence": 0.8, "rationale": "test",
-                "tx_date": "2025-01-01", "tx_amount": "10",
-                "original_description": "", "original_splits": [],
+                "confidence": 0.8,
+                "rationale": "test",
+                "tx_date": "2025-01-01",
+                "tx_amount": "10",
+                "original_description": "",
+                "original_splits": [],
                 "extraction_result": {
                     "seller_name": "Shop",
-                    "items": [{"description": "Item A", "amount": "5"}, ["list", "not", "dict"], {"description": "Item B", "amount": "5"}],
+                    "items": [
+                        {"description": "Item A", "amount": "5"},
+                        ["list", "not", "dict"],
+                        {"description": "Item B", "amount": "5"},
+                    ],
                 },
             }
         ],
@@ -170,19 +183,29 @@ def test_load_proposals_skips_invalid_entries(tmp_path) -> None:
     """load_proposals skips proposals with missing/invalid keys and returns the rest."""
     repo = StateRepository(tmp_path)
     valid1 = {
-        "proposal_id": "p1", "tx_id": "tx1",
-        "suggested_description": "A", "suggested_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
-        "confidence": 0.8, "rationale": "r",
-        "tx_date": "2025-01-01", "tx_amount": "10",
-        "original_description": "", "original_splits": [],
+        "proposal_id": "p1",
+        "tx_id": "tx1",
+        "suggested_description": "A",
+        "suggested_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
+        "confidence": 0.8,
+        "rationale": "r",
+        "tx_date": "2025-01-01",
+        "tx_amount": "10",
+        "original_description": "",
+        "original_splits": [],
     }
     invalid = {"proposal_id": "p2"}  # missing required keys
     valid3 = {
-        "proposal_id": "p3", "tx_id": "tx3",
-        "suggested_description": "B", "suggested_splits": [{"account_path": "Expenses:Misc", "amount": "5", "memo": ""}],
-        "confidence": 0.5, "rationale": "r2",
-        "tx_date": "2025-01-02", "tx_amount": "5",
-        "original_description": "", "original_splits": [],
+        "proposal_id": "p3",
+        "tx_id": "tx3",
+        "suggested_description": "B",
+        "suggested_splits": [{"account_path": "Expenses:Misc", "amount": "5", "memo": ""}],
+        "confidence": 0.5,
+        "rationale": "r2",
+        "tx_date": "2025-01-02",
+        "tx_amount": "5",
+        "original_description": "",
+        "original_splits": [],
     }
     data = {"schema_version": 1, "proposals": [valid1, invalid, valid3]}
     (tmp_path / "proposals.json").write_text(json.dumps(data), encoding="utf-8")
@@ -331,11 +354,21 @@ def test_load_decisions_skips_corrupt_and_invalid_lines(tmp_path) -> None:
     with repo._decisions_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"_schema_version": 1}) + "\n")
         f.write("{invalid json\n")
-        f.write(json.dumps({
-            "tx_id": "tx1", "action": "approve",
-            "final_description": "Done", "final_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
-            "reviewer_note": "", "decided_at": "2025-01-01T12:00:00", "approved_email_ids": [], "approved_receipt": False,
-        }) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "tx_id": "tx1",
+                    "action": "approve",
+                    "final_description": "Done",
+                    "final_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
+                    "reviewer_note": "",
+                    "decided_at": "2025-01-01T12:00:00",
+                    "approved_email_ids": [],
+                    "approved_receipt": False,
+                }
+            )
+            + "\n"
+        )
         f.write(json.dumps({"tx_id": "tx2"}) + "\n")  # missing required keys
     loaded = repo.load_decisions()
     assert len(loaded) == 1
@@ -352,10 +385,13 @@ def test_load_skipped_ids_returns_empty_when_skip_state_corrupt(tmp_path) -> Non
 def test_load_skipped_ids_skips_invalid_skip_record(tmp_path) -> None:
     """When skip_state has one invalid skip record (missing required tx_id), the valid one is still loaded."""
     repo = StateRepository(tmp_path)
-    data = {"schema_version": 1, "skips": [
-        {"tx_id": "tx1", "reason": "Skipped", "skipped_at": "2025-01-01T12:00:00"},
-        {"reason": "no tx_id"},  # missing required tx_id -> KeyError
-    ]}
+    data = {
+        "schema_version": 1,
+        "skips": [
+            {"tx_id": "tx1", "reason": "Skipped", "skipped_at": "2025-01-01T12:00:00"},
+            {"reason": "no tx_id"},  # missing required tx_id -> KeyError
+        ],
+    }
     (tmp_path / "skip_state.json").write_text(json.dumps(data), encoding="utf-8")
     ids = repo.load_skipped_ids()
     assert ids == {"tx1"}
@@ -366,10 +402,16 @@ def test_load_audit_log_skips_corrupt_and_malformed_lines(tmp_path) -> None:
     repo = StateRepository(tmp_path)
     repo._ensure_jsonl_header(repo._audit_path)
     valid_entry = {
-        "entry_id": "e1", "tx_id": "tx1", "action": "approve",
-        "proposed_description": "P", "proposed_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
-        "final_description": "F", "final_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
-        "confidence": 0.9, "evidence_ids": [], "timestamp": "2025-01-01T12:00:00",
+        "entry_id": "e1",
+        "tx_id": "tx1",
+        "action": "approve",
+        "proposed_description": "P",
+        "proposed_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
+        "final_description": "F",
+        "final_splits": [{"account_path": "Expenses:Food", "amount": "10", "memo": ""}],
+        "confidence": 0.9,
+        "evidence_ids": [],
+        "timestamp": "2025-01-01T12:00:00",
     }
     with repo._audit_path.open("a", encoding="utf-8") as f:
         f.write("{bad json\n")

@@ -9,8 +9,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _RECEIPT_GLOBS = (
-    "*.jpg", "*.jpeg", "*.png", "*.heic", "*.heif",
-    "*.JPG", "*.JPEG", "*.PNG", "*.HEIC", "*.HEIF",
+    "*.jpg",
+    "*.jpeg",
+    "*.png",
+    "*.heic",
+    "*.heif",
+    "*.JPG",
+    "*.JPEG",
+    "*.PNG",
+    "*.HEIC",
+    "*.HEIF",
 )
 
 

@@ -10,6 +10,7 @@ from enum import Enum
 
 class ReviewAction(str, Enum):
     """Valid actions a reviewer can take on a proposal."""
+
     APPROVE = "approve"
     EDIT = "edit"
     SKIP = "skip"
@@ -20,12 +21,15 @@ class ReviewAction(str, Enum):
         try:
             return cls(value).value
         except ValueError:
-            raise ValueError(f"Invalid review action: {value!r}; expected one of {[e.value for e in cls]}")
+            raise ValueError(
+                f"Invalid review action: {value!r}; expected one of {[e.value for e in cls]}"
+            )
 
 
 @dataclass(slots=True)
 class Account:
     """GnuCash account with hierarchy metadata."""
+
     account_id: str
     name: str
     full_path: str
@@ -37,6 +41,7 @@ class Account:
 @dataclass(slots=True)
 class Split:
     """A single leg of a GnuCash double-entry transaction."""
+
     account_path: str
     amount: Decimal
     memo: str = ""
@@ -45,6 +50,7 @@ class Split:
 @dataclass(slots=True)
 class Transaction:
     """A GnuCash transaction with its date, amount, and split legs."""
+
     tx_id: str
     posted_date: date
     description: str
@@ -60,6 +66,7 @@ class Transaction:
 @dataclass(slots=True)
 class LineItem:
     """A single item on a receipt with description and amount."""
+
     description: str
     amount: Decimal
     quantity: int = 1
@@ -68,6 +75,7 @@ class LineItem:
 @dataclass(slots=True)
 class EmailEvidence:
     """Parsed evidence from an .eml file used for transaction matching."""
+
     evidence_id: str
     message_id: str
     sender: str
@@ -84,6 +92,7 @@ class EmailEvidence:
 @dataclass(slots=True)
 class ReceiptEvidence:
     """OCR-extracted evidence from a receipt image."""
+
     evidence_id: str
     source_path: str
     ocr_text: str
@@ -95,6 +104,7 @@ class ReceiptEvidence:
 @dataclass(slots=True)
 class EvidencePacket:
     """Aggregated evidence for a single transaction."""
+
     tx_id: str
     emails: list[EmailEvidence] = field(default_factory=list)
     receipt: ReceiptEvidence | None = None
@@ -104,6 +114,7 @@ class EvidencePacket:
 @dataclass(slots=True)
 class Proposal:
     """ML-generated proposal for a single transaction's category and description."""
+
     proposal_id: str
     tx_id: str
     suggested_description: str
@@ -121,12 +132,15 @@ class Proposal:
     llm_confidence: float | None = None
     llm_category: str | None = None
     llm_description: str | None = None
-    extraction_result: dict | None = None  # seller_name, seller_web_description, items, order_ids, etc.
+    extraction_result: dict | None = (
+        None  # seller_name, seller_web_description, items, order_ids, etc.
+    )
 
 
 @dataclass(slots=True)
 class ReviewDecision:
     """User's final decision on a transaction after review."""
+
     tx_id: str
     action: str  # approve|edit|skip
     final_description: str
@@ -140,6 +154,7 @@ class ReviewDecision:
 @dataclass(slots=True)
 class SkipRecord:
     """Record of a transaction the user chose to skip."""
+
     tx_id: str
     reason: str = ""
     skipped_at: datetime | None = None
@@ -148,6 +163,7 @@ class SkipRecord:
 @dataclass(slots=True)
 class AuditEntry:
     """Audit trail entry capturing the proposed-vs-final outcome."""
+
     entry_id: str
     tx_id: str
     action: str

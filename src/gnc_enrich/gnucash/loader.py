@@ -153,9 +153,11 @@ class GnuCashLoader:
             if not self._has_target_account(tx):
                 continue
             is_unsettled = self._is_unsettled_transfer(tx)
-            candidates.append(dataclasses.replace(
-                tx, is_transfer=is_unsettled, is_unsettled_transfer=is_unsettled
-            ))
+            candidates.append(
+                dataclasses.replace(
+                    tx, is_transfer=is_unsettled, is_unsettled_transfer=is_unsettled
+                )
+            )
 
         return candidates
 
@@ -244,16 +246,18 @@ class GnuCashLoader:
                 else:
                     original_category = sp.account_path
 
-            transactions.append(Transaction(
-                tx_id=tx_id,
-                posted_date=posted_date,
-                description=description,
-                currency=currency,
-                amount=total_amount,
-                splits=splits,
-                account_name=account_name,
-                original_category=original_category,
-            ))
+            transactions.append(
+                Transaction(
+                    tx_id=tx_id,
+                    posted_date=posted_date,
+                    description=description,
+                    currency=currency,
+                    amount=total_amount,
+                    splits=splits,
+                    account_name=account_name,
+                    original_category=original_category,
+                )
+            )
 
         return transactions
 
@@ -372,7 +376,10 @@ class GnuCashWriter:
                 splits_el = trn_el.find("trn:splits", _NS)
                 if splits_el is not None:
                     self._apply_split_changes(
-                        splits_el, change["splits"], account_guid_by_path, loader,
+                        splits_el,
+                        change["splits"],
+                        account_guid_by_path,
+                        loader,
                     )
 
         output = source if in_place else source.with_suffix(".enriched.gnucash")

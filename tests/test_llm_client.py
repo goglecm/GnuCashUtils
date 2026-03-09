@@ -46,7 +46,9 @@ def test_chat_success_uses_session_post(monkeypatch: pytest.MonkeyPatch) -> None
         lambda self: DummySession(),  # type: ignore[method-assign]
     )
 
-    result = client.chat(messages=[{"role": "user", "content": "Hi"}], max_tokens=10, temperature=0.5)
+    result = client.chat(
+        messages=[{"role": "user", "content": "Hi"}], max_tokens=10, temperature=0.5
+    )
     assert result is not None
     assert result.get("choices")
     assert len(calls) == 1
@@ -95,7 +97,9 @@ def test_warmup_is_noop_when_disabled() -> None:
     assert elapsed < 0.5
 
 
-def test_warmup_when_enabled_does_not_raise_if_chat_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_warmup_when_enabled_does_not_raise_if_chat_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """warmup() does not raise when the client is enabled but chat() returns None (e.g. backend down)."""
     import requests
 
@@ -123,8 +127,14 @@ def test_warmup_when_enabled_does_not_raise_if_chat_returns_none(monkeypatch: py
 def test_enabled_false_when_endpoint_or_model_empty() -> None:
     """enabled is False when mode is online but endpoint or model_name is empty."""
     assert LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="", model_name="x")).enabled is False
-    assert LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="")).enabled is False
-    assert LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="m")).enabled is True
+    assert (
+        LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="")).enabled
+        is False
+    )
+    assert (
+        LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="m")).enabled
+        is True
+    )
 
 
 def test_close_releases_session_and_is_idempotent() -> None:
@@ -154,4 +164,3 @@ def test_context_manager_closes_on_exit() -> None:
         _ = client._get_session()
         assert client._session is not None
     assert client._session is None
-

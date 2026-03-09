@@ -18,9 +18,7 @@ from gnc_enrich.domain.models import EmailEvidence
 logger = logging.getLogger(__name__)
 
 _GBP_AMOUNT_RE = re.compile(
-    r"£\s?(\d{1,7}(?:[,]\d{3})*(?:\.\d{1,2})?)"
-    r"|"
-    r"GBP\s?(\d{1,7}(?:[,]\d{3})*(?:\.\d{1,2})?)",
+    r"£\s?(\d{1,7}(?:[,]\d{3})*(?:\.\d{1,2})?)" r"|" r"GBP\s?(\d{1,7}(?:[,]\d{3})*(?:\.\d{1,2})?)",
     re.IGNORECASE,
 )
 
@@ -49,6 +47,7 @@ def _extract_amount_context(filtered_body: str, amount: Decimal) -> str:
     start = max(0, pos - _AMOUNT_CONTEXT_CHARS // 2)
     end = min(len(filtered_body), pos + len(needle) + _AMOUNT_CONTEXT_CHARS // 2)
     return _normalise_whitespace(filtered_body[start:end])
+
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RUN_RE = re.compile(r"[ \t]{2,}")
@@ -139,11 +138,9 @@ class EmlParser:
         if parsed_amounts:
             amount_context = _extract_amount_context(filtered_body, parsed_amounts[0])
         if not amount_context and display_body:
-            amount_context = display_body[:_AMOUNT_CONTEXT_CHARS * 2]
+            amount_context = display_body[: _AMOUNT_CONTEXT_CHARS * 2]
 
-        evidence_id = hashlib.sha256(
-            (message_id or str(eml_path)).encode()
-        ).hexdigest()[:16]
+        evidence_id = hashlib.sha256((message_id or str(eml_path)).encode()).hexdigest()[:16]
 
         return EmailEvidence(
             evidence_id=evidence_id,

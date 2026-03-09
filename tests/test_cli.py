@@ -11,14 +11,21 @@ def test_parser_exposes_expected_commands() -> None:
 
 def test_run_command_defaults() -> None:
     parser = build_parser()
-    ns = parser.parse_args([
-        "run",
-        "--gnucash-path", "/tmp/book.gnucash",
-        "--emails-dir", "/tmp/emails",
-        "--receipts-dir", "/tmp/receipts",
-        "--processed-receipts-dir", "/tmp/done",
-        "--state-dir", "/tmp/state",
-    ])
+    ns = parser.parse_args(
+        [
+            "run",
+            "--gnucash-path",
+            "/tmp/book.gnucash",
+            "--emails-dir",
+            "/tmp/emails",
+            "--receipts-dir",
+            "/tmp/receipts",
+            "--processed-receipts-dir",
+            "/tmp/done",
+            "--state-dir",
+            "/tmp/state",
+        ]
+    )
     assert ns.command == "run"
     assert ns.date_window_days == 7
     assert ns.amount_tolerance == 0.50
@@ -29,11 +36,14 @@ def test_run_command_defaults() -> None:
 
 def test_apply_command_dry_run() -> None:
     parser = build_parser()
-    ns = parser.parse_args([
-        "apply",
-        "--state-dir", "/tmp/state",
-        "--dry-run",
-    ])
+    ns = parser.parse_args(
+        [
+            "apply",
+            "--state-dir",
+            "/tmp/state",
+            "--dry-run",
+        ]
+    )
     assert ns.command == "apply"
     assert ns.dry_run is True
     assert ns.create_backup is True
@@ -41,10 +51,13 @@ def test_apply_command_dry_run() -> None:
 
 def test_rollback_command_defaults() -> None:
     parser = build_parser()
-    ns = parser.parse_args([
-        "rollback",
-        "--state-dir", "/tmp/state",
-    ])
+    ns = parser.parse_args(
+        [
+            "rollback",
+            "--state-dir",
+            "/tmp/state",
+        ]
+    )
     assert ns.command == "rollback"
     assert ns.backup == ""
     assert ns.list_backups is False
@@ -52,17 +65,27 @@ def test_rollback_command_defaults() -> None:
 
 def test_run_command_with_llm() -> None:
     parser = build_parser()
-    ns = parser.parse_args([
-        "run",
-        "--gnucash-path", "/tmp/book.gnucash",
-        "--emails-dir", "/tmp/emails",
-        "--receipts-dir", "/tmp/receipts",
-        "--processed-receipts-dir", "/tmp/done",
-        "--state-dir", "/tmp/state",
-        "--llm-mode", "online",
-        "--llm-endpoint", "http://localhost:11434",
-        "--llm-model", "llama3",
-    ])
+    ns = parser.parse_args(
+        [
+            "run",
+            "--gnucash-path",
+            "/tmp/book.gnucash",
+            "--emails-dir",
+            "/tmp/emails",
+            "--receipts-dir",
+            "/tmp/receipts",
+            "--processed-receipts-dir",
+            "/tmp/done",
+            "--state-dir",
+            "/tmp/state",
+            "--llm-mode",
+            "online",
+            "--llm-endpoint",
+            "http://localhost:11434",
+            "--llm-model",
+            "llama3",
+        ]
+    )
     assert ns.llm_mode == "online"
     assert ns.llm_endpoint == "http://localhost:11434"
     assert ns.llm_model == "llama3"

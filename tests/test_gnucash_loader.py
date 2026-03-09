@@ -130,7 +130,9 @@ class TestCandidateFiltering:
         ids = {c.tx_id for c in candidates}
         assert "tx_transfer" not in ids
 
-    def test_unsettled_transfers_only_when_description_suggests_transfer(self, sample_gnucash_path: Path) -> None:
+    def test_unsettled_transfers_only_when_description_suggests_transfer(
+        self, sample_gnucash_path: Path
+    ) -> None:
         """Only 2-split (target + bank) with 'transfer' etc. in description are is_transfer=True; else expense."""
         loader = GnuCashLoader()
         txs = loader.load_transactions(sample_gnucash_path)
@@ -159,9 +161,7 @@ class TestCandidateFiltering:
     def test_include_skipped(self, sample_gnucash_path: Path) -> None:
         loader = GnuCashLoader()
         txs = loader.load_transactions(sample_gnucash_path)
-        candidates = loader.filter_candidates(
-            txs, include_skipped=True, skipped_ids={"tx_unspec1"}
-        )
+        candidates = loader.filter_candidates(txs, include_skipped=True, skipped_ids={"tx_unspec1"})
         ids = {c.tx_id for c in candidates}
         assert "tx_unspec1" in ids
         assert len(candidates) == 3
@@ -191,7 +191,9 @@ class TestCandidateFiltering:
         )
         tx_imbalance_nested = Transaction(
             **base,
-            splits=[Split(account_path="Assets:Current:Imbalance-GBP", amount=Decimal("1"), memo="")],
+            splits=[
+                Split(account_path="Assets:Current:Imbalance-GBP", amount=Decimal("1"), memo="")
+            ],
         )
         tx_food_not_target = Transaction(
             **base,
@@ -201,7 +203,9 @@ class TestCandidateFiltering:
         assert loader._has_target_account(tx_imbalance_nested) is True
         assert loader._has_target_account(tx_food_not_target) is False
 
-    def test_description_with_transfer_keyword_marked_unsettled_transfer(self, sample_gnucash_path: Path) -> None:
+    def test_description_with_transfer_keyword_marked_unsettled_transfer(
+        self, sample_gnucash_path: Path
+    ) -> None:
         """2-split (one target, one bank) with 'transfer' in description is is_unsettled_transfer=True."""
         loader = GnuCashLoader()
         loader.load_transactions(sample_gnucash_path)
@@ -220,7 +224,9 @@ class TestCandidateFiltering:
         tx_expense = dataclasses.replace(tx, description="Card Payment")
         assert loader._is_unsettled_transfer(tx_expense) is False
 
-    def test_three_splits_with_one_target_not_unsettled_transfer(self, sample_gnucash_path: Path) -> None:
+    def test_three_splits_with_one_target_not_unsettled_transfer(
+        self, sample_gnucash_path: Path
+    ) -> None:
         """Only 2-split transactions (one target, one own account) are marked unsettled transfer."""
         loader = GnuCashLoader()
         loader.load_transactions(sample_gnucash_path)
@@ -280,7 +286,9 @@ class TestGnuCashWriter:
         """write_changes raises ValueError when tree has no <gnc:book> (graceful failure)."""
         from lxml import etree
 
-        root = etree.fromstring('<?xml version="1.0"?><gnc-v2 xmlns:gnc="http://www.gnucash.org/XML/gnc"></gnc-v2>')
+        root = etree.fromstring(
+            '<?xml version="1.0"?><gnc-v2 xmlns:gnc="http://www.gnucash.org/XML/gnc"></gnc-v2>'
+        )
         tree = etree.ElementTree(root)
         source = tmp_path / "dummy.gnucash"
         source.write_text("", encoding="utf-8")

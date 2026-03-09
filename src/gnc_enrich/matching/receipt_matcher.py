@@ -66,9 +66,7 @@ class ReceiptMatcher:
     def assigned_ids(self) -> set[str]:
         return set(self._assigned)
 
-    def is_amount_compatible(
-        self, receipt: ReceiptEvidence, tx: Transaction
-    ) -> bool:
+    def is_amount_compatible(self, receipt: ReceiptEvidence, tx: Transaction) -> bool:
         """Check whether receipt total is within tolerance of transaction amount."""
         if receipt.parsed_total is None:
             return False

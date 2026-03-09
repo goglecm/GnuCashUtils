@@ -7,7 +7,11 @@ _PACKAGE_PROMPTS = Path(__file__).parent
 
 def get_prompts_dir(user_prompts_dir: Path | None) -> Path:
     """Return the directory to load prompts from (user override or package defaults)."""
-    return user_prompts_dir if user_prompts_dir is not None and user_prompts_dir.is_dir() else _PACKAGE_PROMPTS
+    return (
+        user_prompts_dir
+        if user_prompts_dir is not None and user_prompts_dir.is_dir()
+        else _PACKAGE_PROMPTS
+    )
 
 
 def load_template(prompts_dir: Path, name: str) -> str:

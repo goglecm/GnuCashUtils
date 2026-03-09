@@ -25,7 +25,6 @@ from gnc_enrich.review.service import ReviewQueueService
 from gnc_enrich.review.webapp import create_app
 from gnc_enrich.state.repository import StateRepository
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "emails"
 
 
@@ -218,10 +217,12 @@ class TestTerseItemLookup:
 
     def test_disabled_llm_returns_original_names(self) -> None:
         predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.DISABLED))
-        receipt = _make_receipt(items=[
-            LineItem("BRD WHL", Decimal("1.20")),
-            LineItem("MLK 2L", Decimal("1.50")),
-        ])
+        receipt = _make_receipt(
+            items=[
+                LineItem("BRD WHL", Decimal("1.20")),
+                LineItem("MLK 2L", Decimal("1.50")),
+            ]
+        )
         result = predictor.describe_terse_items(receipt)
         assert result == ["BRD WHL", "MLK 2L"]
 
@@ -237,12 +238,16 @@ class TestTerseItemLookup:
             "choices": [{"message": {"content": '["Wholemeal Bread", "2 Litre Milk"]'}}]
         }
         predictor = CategoryPredictor(
-            llm_config=LlmConfig(mode=LlmMode.OFFLINE, endpoint="http://llm:1234", model_name="test")
+            llm_config=LlmConfig(
+                mode=LlmMode.OFFLINE, endpoint="http://llm:1234", model_name="test"
+            )
         )
-        receipt = _make_receipt(items=[
-            LineItem("BRD WHL", Decimal("1.20")),
-            LineItem("MLK 2L", Decimal("1.50")),
-        ])
+        receipt = _make_receipt(
+            items=[
+                LineItem("BRD WHL", Decimal("1.20")),
+                LineItem("MLK 2L", Decimal("1.50")),
+            ]
+        )
         result = predictor.describe_terse_items(receipt)
         assert result == ["Wholemeal Bread", "2 Litre Milk"]
         mock_chat.assert_called_once()
@@ -275,7 +280,9 @@ class TestNewCategoryCreation:
         account_paths = {a.full_path for a in accounts}
         assert "Expenses:Hobbies:ModelTrains" in account_paths
 
-    def test_existing_category_not_duplicated(self, sample_gnucash_path: Path, tmp_path: Path) -> None:
+    def test_existing_category_not_duplicated(
+        self, sample_gnucash_path: Path, tmp_path: Path
+    ) -> None:
         loader = GnuCashLoader()
         loader.load_transactions(sample_gnucash_path)
         tree = loader.get_tree()
@@ -357,14 +364,18 @@ class TestEvidenceApproval:
         app = create_app(service)
         client = app.test_client()
 
-        resp = client.post("/review/p1/decide", data={
-            "action": "approve",
-            "description": "Test desc",
-            "split_path": "Expenses:Food",
-            "split_amount": "25.00",
-            "approved_email": "em1",
-            "approved_receipt": "1",
-        }, follow_redirects=False)
+        resp = client.post(
+            "/review/p1/decide",
+            data={
+                "action": "approve",
+                "description": "Test desc",
+                "split_path": "Expenses:Food",
+                "split_amount": "25.00",
+                "approved_email": "em1",
+                "approved_receipt": "1",
+            },
+            follow_redirects=False,
+        )
         assert resp.status_code in (302, 303)
 
         loaded = state.load_decisions()
@@ -376,12 +387,16 @@ class TestEvidenceApproval:
         app = create_app(service)
         client = app.test_client()
 
-        resp = client.post("/review/p1/decide", data={
-            "action": "approve",
-            "description": "Test desc",
-            "split_path": "Expenses:Food",
-            "split_amount": "25.00",
-        }, follow_redirects=False)
+        resp = client.post(
+            "/review/p1/decide",
+            data={
+                "action": "approve",
+                "description": "Test desc",
+                "split_path": "Expenses:Food",
+                "split_amount": "25.00",
+            },
+            follow_redirects=False,
+        )
         assert resp.status_code in (302, 303)
 
         loaded = state.load_decisions()
@@ -396,7 +411,9 @@ class TestEvidenceApproval:
 
 class TestGracefulNoEvidence:
 
-    def test_pipeline_with_nonexistent_emails_dir(self, sample_gnucash_path: Path, tmp_path: Path) -> None:
+    def test_pipeline_with_nonexistent_emails_dir(
+        self, sample_gnucash_path: Path, tmp_path: Path
+    ) -> None:
         from gnc_enrich.services.pipeline import EnrichmentPipeline
 
         config = RunConfig(
@@ -410,7 +427,9 @@ class TestGracefulNoEvidence:
         result = pipeline.run(config)
         assert result.proposal_count >= 0
 
-    def test_pipeline_with_empty_emails_dir(self, sample_gnucash_path: Path, tmp_path: Path) -> None:
+    def test_pipeline_with_empty_emails_dir(
+        self, sample_gnucash_path: Path, tmp_path: Path
+    ) -> None:
         from gnc_enrich.services.pipeline import EnrichmentPipeline
 
         emails_dir = tmp_path / "emails"
@@ -496,27 +515,38 @@ class TestSchemaVersionHeaders:
     def test_decisions_jsonl_has_header(self, tmp_path: Path) -> None:
         state = StateRepository(tmp_path)
         dec = ReviewDecision(
-            tx_id="tx1", action="approve", final_description="test",
-            final_splits=[], decided_at=datetime.now(timezone.utc),
+            tx_id="tx1",
+            action="approve",
+            final_description="test",
+            final_splits=[],
+            decided_at=datetime.now(timezone.utc),
         )
         state.save_decision(dec)
         first_line = (tmp_path / "decisions.jsonl").read_text().splitlines()[0]
         import json
+
         assert "_schema_version" in json.loads(first_line)
 
     def test_audit_log_has_header(self, tmp_path: Path) -> None:
         from gnc_enrich.domain.models import AuditEntry
+
         state = StateRepository(tmp_path)
         entry = AuditEntry(
-            entry_id="e1", tx_id="tx1", action="approve",
-            proposed_description="p", proposed_splits=[],
-            final_description="f", final_splits=[],
-            confidence=0.9, evidence_ids=[],
+            entry_id="e1",
+            tx_id="tx1",
+            action="approve",
+            proposed_description="p",
+            proposed_splits=[],
+            final_description="f",
+            final_splits=[],
+            confidence=0.9,
+            evidence_ids=[],
             timestamp=datetime.now(timezone.utc),
         )
         state.append_audit(entry)
         first_line = (tmp_path / "audit_log.jsonl").read_text().splitlines()[0]
         import json
+
         assert "_schema_version" in json.loads(first_line)
 
     def test_feedback_events_has_header(self, tmp_path: Path) -> None:
@@ -524,6 +554,7 @@ class TestSchemaVersionHeaders:
         state.append_feedback({"type": "approve", "tx_id": "tx1"})
         first_line = (tmp_path / "feedback_events.jsonl").read_text().splitlines()[0]
         import json
+
         assert "_schema_version" in json.loads(first_line)
 
     def test_email_index_has_header(self, tmp_path: Path) -> None:
@@ -535,6 +566,7 @@ class TestSchemaVersionHeaders:
         repo.build_or_load(emails_dir, idx_dir)
         first_line = (idx_dir / "email_index.jsonl").read_text().splitlines()[0]
         import json
+
         assert "_schema_version" in json.loads(first_line)
 
     def test_email_manifest_has_schema_version(self, tmp_path: Path) -> None:
@@ -545,6 +577,7 @@ class TestSchemaVersionHeaders:
         repo = EmailIndexRepository()
         repo.build_or_load(emails_dir, idx_dir)
         import json
+
         manifest = json.loads((idx_dir / "email_index_manifest.json").read_text())
         assert "_schema_version" in manifest
 
@@ -563,7 +596,9 @@ class TestEvidenceEnrichmentWiring:
 
     def test_submit_decision_enriches_from_approved_emails(self, tmp_path: Path) -> None:
         email_ev = EmailEvidence(
-            evidence_id="em1", message_id="<m@x>", sender="shop@co.uk",
+            evidence_id="em1",
+            message_id="<m@x>",
+            sender="shop@co.uk",
             subject="Order Confirmation",
             sent_at=datetime(2025, 2, 1, tzinfo=timezone.utc),
             body_snippet="Your order for Widget X",
@@ -571,11 +606,17 @@ class TestEvidenceEnrichmentWiring:
             full_body="Thank you for purchasing Widget X from our store.",
         )
         proposal = Proposal(
-            proposal_id="p1", tx_id="tx1",
-            suggested_description="Payment 01/02/2025", suggested_splits=[],
-            confidence=0.8, rationale="ML prediction",
+            proposal_id="p1",
+            tx_id="tx1",
+            suggested_description="Payment 01/02/2025",
+            suggested_splits=[],
+            confidence=0.8,
+            rationale="ML prediction",
             evidence=EvidencePacket(
-                tx_id="tx1", emails=[email_ev], receipt=None, similar_transactions=[],
+                tx_id="tx1",
+                emails=[email_ev],
+                receipt=None,
+                similar_transactions=[],
             ),
         )
         state = StateRepository(tmp_path)
@@ -584,24 +625,36 @@ class TestEvidenceEnrichmentWiring:
         svc = ReviewQueueService(state)
 
         decision = ReviewDecision(
-            tx_id="tx1", action="approve",
+            tx_id="tx1",
+            action="approve",
             final_description="Payment 01/02/2025",
-            final_splits=[], decided_at=None,
-            approved_email_ids=["em1"], approved_receipt=False,
+            final_splits=[],
+            decided_at=None,
+            approved_email_ids=["em1"],
+            approved_receipt=False,
         )
         svc.submit_decision(decision)
 
         decisions = state.load_decisions()
         assert len(decisions) == 1
-        assert "Widget X" in decisions[0].final_description or "Widget" in decisions[0].final_description
+        assert (
+            "Widget X" in decisions[0].final_description
+            or "Widget" in decisions[0].final_description
+        )
 
     def test_submit_decision_no_enrichment_without_approval(self, tmp_path: Path) -> None:
         proposal = Proposal(
-            proposal_id="p2", tx_id="tx1",
-            suggested_description="Payment 01/02/2025", suggested_splits=[],
-            confidence=0.8, rationale="test",
+            proposal_id="p2",
+            tx_id="tx1",
+            suggested_description="Payment 01/02/2025",
+            suggested_splits=[],
+            confidence=0.8,
+            rationale="test",
             evidence=EvidencePacket(
-                tx_id="tx1", emails=[], receipt=None, similar_transactions=[],
+                tx_id="tx1",
+                emails=[],
+                receipt=None,
+                similar_transactions=[],
             ),
         )
         state = StateRepository(tmp_path)
@@ -610,10 +663,13 @@ class TestEvidenceEnrichmentWiring:
         svc = ReviewQueueService(state)
 
         decision = ReviewDecision(
-            tx_id="tx1", action="approve",
+            tx_id="tx1",
+            action="approve",
             final_description="Payment 01/02/2025",
-            final_splits=[], decided_at=None,
-            approved_email_ids=[], approved_receipt=False,
+            final_splits=[],
+            decided_at=None,
+            approved_email_ids=[],
+            approved_receipt=False,
         )
         svc.submit_decision(decision)
 
@@ -627,16 +683,19 @@ class TestCornerCases:
     def test_parse_fraction_zero_denominator(self) -> None:
         """_parse_fraction('0/0') must not raise ZeroDivisionError."""
         from gnc_enrich.gnucash.loader import _parse_fraction
+
         result = _parse_fraction("0/0")
         assert result == Decimal(0)
 
     def test_parse_fraction_garbage(self) -> None:
         from gnc_enrich.gnucash.loader import _parse_fraction
+
         result = _parse_fraction("abc/def")
         assert result == Decimal(0)
 
     def test_parse_fraction_normal(self) -> None:
         from gnc_enrich.gnucash.loader import _parse_fraction
+
         assert _parse_fraction("1500/100") == Decimal("15")
 
     def test_jsonl_corrupt_line_skipped(self, tmp_path: Path) -> None:
@@ -659,9 +718,13 @@ class TestCornerCases:
 
         repo = EmailIndexRepository()
         ev = EmailEvidence(
-            evidence_id="e1", message_id="<m@x>", sender="shop@co.uk",
-            subject="Order", sent_at=datetime(2025, 1, 15, tzinfo=timezone.utc),
-            body_snippet="snippet", full_body="This is the FULL email body content.",
+            evidence_id="e1",
+            message_id="<m@x>",
+            sender="shop@co.uk",
+            subject="Order",
+            sent_at=datetime(2025, 1, 15, tzinfo=timezone.utc),
+            body_snippet="snippet",
+            full_body="This is the FULL email body content.",
             parsed_amounts=[Decimal("25.00")],
         )
         repo._entries = [ev]
@@ -675,19 +738,35 @@ class TestCornerCases:
     def test_review_action_validates(self) -> None:
         """ReviewAction.validate rejects invalid actions."""
         from gnc_enrich.domain.models import ReviewAction
+
         assert ReviewAction.validate("approve") == "approve"
         assert ReviewAction.validate("skip") == "skip"
         import pytest
+
         with pytest.raises(ValueError, match="Invalid review action"):
             ReviewAction.validate("invalid_action")
 
     def test_verbose_flag_accepted(self) -> None:
         """The CLI accepts the -v/--verbose flag."""
         from gnc_enrich.cli import build_parser
+
         parser = build_parser()
-        args = parser.parse_args(["-v", "run", "--gnucash-path", "x", "--emails-dir", "e",
-                                  "--receipts-dir", "r", "--processed-receipts-dir", "p",
-                                  "--state-dir", "s"])
+        args = parser.parse_args(
+            [
+                "-v",
+                "run",
+                "--gnucash-path",
+                "x",
+                "--emails-dir",
+                "e",
+                "--receipts-dir",
+                "r",
+                "--processed-receipts-dir",
+                "p",
+                "--state-dir",
+                "s",
+            ]
+        )
         assert args.verbose is True
 
     def test_receipt_glob_case_insensitive(self, tmp_path: Path) -> None:

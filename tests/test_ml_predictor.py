@@ -15,43 +15,61 @@ def _make_history() -> list[Transaction]:
     """Generate synthetic historical transactions for training."""
     txs = []
     food_descs = [
-        "Tesco Weekly Shop", "Sainsburys Groceries", "Asda Online",
-        "Lidl Store", "Aldi Supermarket", "M&S Food Hall",
-        "Waitrose Order", "Co-op Food", "Tesco Express", "Sainsburys Local",
+        "Tesco Weekly Shop",
+        "Sainsburys Groceries",
+        "Asda Online",
+        "Lidl Store",
+        "Aldi Supermarket",
+        "M&S Food Hall",
+        "Waitrose Order",
+        "Co-op Food",
+        "Tesco Express",
+        "Sainsburys Local",
     ]
     transport_descs = [
-        "Uber Ride", "Trainline Ticket", "TfL Bus", "Shell Petrol",
-        "BP Fuel", "Parking Meter", "National Rail", "First Bus",
-        "Uber Trip", "EasyJet Flight",
+        "Uber Ride",
+        "Trainline Ticket",
+        "TfL Bus",
+        "Shell Petrol",
+        "BP Fuel",
+        "Parking Meter",
+        "National Rail",
+        "First Bus",
+        "Uber Trip",
+        "EasyJet Flight",
     ]
     for i, desc in enumerate(food_descs):
-        txs.append(Transaction(
-            tx_id=f"hist_food_{i}",
-            posted_date=date(2024, 6, 1 + i),
-            description=desc,
-            currency="GBP",
-            amount=Decimal("25.00"),
-            splits=[
-                Split(account_path="Current Account", amount=Decimal("-25.00")),
-                Split(account_path="Expenses:Food", amount=Decimal("25.00")),
-            ],
-            account_name="Current Account",
-            original_category="Expenses:Food",
-        ))
+        txs.append(
+            Transaction(
+                tx_id=f"hist_food_{i}",
+                posted_date=date(2024, 6, 1 + i),
+                description=desc,
+                currency="GBP",
+                amount=Decimal("25.00"),
+                splits=[
+                    Split(account_path="Current Account", amount=Decimal("-25.00")),
+                    Split(account_path="Expenses:Food", amount=Decimal("25.00")),
+                ],
+                account_name="Current Account",
+                original_category="Expenses:Food",
+            )
+        )
     for i, desc in enumerate(transport_descs):
-        txs.append(Transaction(
-            tx_id=f"hist_transport_{i}",
-            posted_date=date(2024, 6, 1 + i),
-            description=desc,
-            currency="GBP",
-            amount=Decimal("15.00"),
-            splits=[
-                Split(account_path="Current Account", amount=Decimal("-15.00")),
-                Split(account_path="Expenses:Transport", amount=Decimal("15.00")),
-            ],
-            account_name="Current Account",
-            original_category="Expenses:Transport",
-        ))
+        txs.append(
+            Transaction(
+                tx_id=f"hist_transport_{i}",
+                posted_date=date(2024, 6, 1 + i),
+                description=desc,
+                currency="GBP",
+                amount=Decimal("15.00"),
+                splits=[
+                    Split(account_path="Current Account", amount=Decimal("-15.00")),
+                    Split(account_path="Expenses:Transport", amount=Decimal("15.00")),
+                ],
+                account_name="Current Account",
+                original_category="Expenses:Transport",
+            )
+        )
     return txs
 
 
@@ -80,8 +98,11 @@ class TestCategoryPredictor:
         tx = _make_target_tx(desc="Tesco Store Purchase")
         emails = [
             EmailEvidence(
-                evidence_id="e1", message_id="<m1>", sender="orders@tesco.com",
-                subject="Your Tesco receipt", sent_at=datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc),
+                evidence_id="e1",
+                message_id="<m1>",
+                sender="orders@tesco.com",
+                subject="Your Tesco receipt",
+                sent_at=datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc),
                 parsed_amounts=[Decimal("25.00")],
             )
         ]
@@ -152,8 +173,11 @@ class TestCategoryPredictor:
         tx = _make_target_tx(desc="Card Payment")
         emails = [
             EmailEvidence(
-                evidence_id="e1", message_id="<m1>", sender="orders@tesco.com",
-                subject="Receipt", sent_at=datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc),
+                evidence_id="e1",
+                message_id="<m1>",
+                sender="orders@tesco.com",
+                subject="Receipt",
+                sent_at=datetime(2025, 1, 15, 12, 0, tzinfo=timezone.utc),
             )
         ]
         proposal = predictor.propose(tx, emails, None)
@@ -168,7 +192,9 @@ class TestCategoryPredictor:
 
     def test_llm_query_attempted_on_low_confidence(self) -> None:
         """With no emails: extract-from-description then step1 then step2."""
-        llm_cfg = LlmConfig(mode=LlmMode.ONLINE, endpoint="http://fake:1234/v1/chat/completions", model_name="test")
+        llm_cfg = LlmConfig(
+            mode=LlmMode.ONLINE, endpoint="http://fake:1234/v1/chat/completions", model_name="test"
+        )
         predictor = CategoryPredictor(llm_config=llm_cfg)
         tx = _make_target_tx(desc="Unknown purchase")
         account_paths = ["Expenses:Shopping", "Expenses:Shopping:Online", "Expenses:Food"]
@@ -197,7 +223,9 @@ class TestCategoryPredictor:
 
     def test_llm_non_dict_response_ignored(self) -> None:
         """When extraction or step1 returns non-dict JSON (e.g. list), we ignore it and use ML fallback."""
-        llm_cfg = LlmConfig(mode=LlmMode.ONLINE, endpoint="http://fake:1234/v1/chat/completions", model_name="test")
+        llm_cfg = LlmConfig(
+            mode=LlmMode.ONLINE, endpoint="http://fake:1234/v1/chat/completions", model_name="test"
+        )
         predictor = CategoryPredictor(llm_config=llm_cfg)
         tx = _make_target_tx(desc="Unknown purchase")
         with patch("gnc_enrich.llm.client.LlmClient.chat") as mock_chat:
@@ -228,9 +256,18 @@ class TestCategoryPredictor:
 
     def test_get_subcategories_and_format_step2(self) -> None:
         """Step 2: _get_subcategories returns chosen + paths under it; _format_step2_subcategories formats for prompt."""
-        paths = ["Expenses:Food", "Expenses:Food:Groceries", "Expenses:Food:Takeaway", "Expenses:Transport"]
+        paths = [
+            "Expenses:Food",
+            "Expenses:Food:Groceries",
+            "Expenses:Food:Takeaway",
+            "Expenses:Transport",
+        ]
         sub = CategoryPredictor._get_subcategories("Expenses:Food", paths)
-        assert "Expenses:Food" in sub and "Expenses:Food:Groceries" in sub and "Expenses:Food:Takeaway" in sub
+        assert (
+            "Expenses:Food" in sub
+            and "Expenses:Food:Groceries" in sub
+            and "Expenses:Food:Takeaway" in sub
+        )
         assert "Expenses:Transport" not in sub
         out = CategoryPredictor._format_step2_subcategories("Expenses:Food", sub)
         assert "Groceries" in out and "Takeaway" in out
@@ -322,8 +359,11 @@ class TestCategoryPredictor:
         """< 2 categorized transactions → falls back to heuristic."""
         txs = [
             Transaction(
-                tx_id="t1", posted_date=date(2025, 1, 1),
-                description="Tesco", currency="GBP", amount=Decimal("10"),
+                tx_id="t1",
+                posted_date=date(2025, 1, 1),
+                description="Tesco",
+                currency="GBP",
+                amount=Decimal("10"),
                 splits=[Split(account_path="Expenses:Food", amount=Decimal("10"))],
                 original_category="Expenses:Food",
             ),
@@ -337,12 +377,17 @@ class TestCategoryPredictor:
         """All history in one category → falls back, doesn't crash SGDClassifier."""
         txs = []
         for i in range(5):
-            txs.append(Transaction(
-                tx_id=f"t{i}", posted_date=date(2025, 1, i + 1),
-                description=f"Tesco {i}", currency="GBP", amount=Decimal("10"),
-                splits=[Split(account_path="Expenses:Food", amount=Decimal("10"))],
-                original_category="Expenses:Food",
-            ))
+            txs.append(
+                Transaction(
+                    tx_id=f"t{i}",
+                    posted_date=date(2025, 1, i + 1),
+                    description=f"Tesco {i}",
+                    currency="GBP",
+                    amount=Decimal("10"),
+                    splits=[Split(account_path="Expenses:Food", amount=Decimal("10"))],
+                    original_category="Expenses:Food",
+                )
+            )
         predictor = CategoryPredictor(historical_transactions=txs)
         tx = _make_target_tx(desc="Sainsburys")
         proposal = predictor.propose(tx, [], None)
@@ -366,14 +411,23 @@ class TestCategoryPredictor:
 
     def test_run_llm_check_returns_dict_when_flow_succeeds(self) -> None:
         """run_llm_check returns dict with extraction, category, description, confidence when _run_llm_flow returns."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
-        with patch.object(predictor, "_run_llm_flow", return_value={
-            "extraction": {"seller_name": "Shop", "items": [{"description": "Item", "amount": "25"}]},
-            "category": "Expenses:Food",
-            "description": "Shop order 123",
-            "confidence": 0.8,
-        }):
+        with patch.object(
+            predictor,
+            "_run_llm_flow",
+            return_value={
+                "extraction": {
+                    "seller_name": "Shop",
+                    "items": [{"description": "Item", "amount": "25"}],
+                },
+                "category": "Expenses:Food",
+                "description": "Shop order 123",
+                "confidence": 0.8,
+            },
+        ):
             result = predictor.run_llm_check(tx, [], None, ["Expenses:Food"])
         assert result is not None
         assert result["category"] == "Expenses:Food"
@@ -388,14 +442,23 @@ class TestCategoryPredictor:
     def test_get_emails_for_display_deduplicates_by_context(self) -> None:
         """get_emails_for_display returns (email, context) list with 95% similar contexts deduplicated."""
         from gnc_enrich.domain.models import EmailEvidence
+
         sent = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
         em1 = EmailEvidence(
-            evidence_id="e1", message_id="m1", sender="a@b.com", subject="Order",
-            sent_at=sent, body_snippet="Your order total £25.00 thank you.",
+            evidence_id="e1",
+            message_id="m1",
+            sender="a@b.com",
+            subject="Order",
+            sent_at=sent,
+            body_snippet="Your order total £25.00 thank you.",
         )
         em2 = EmailEvidence(
-            evidence_id="e2", message_id="m2", sender="a@b.com", subject="Order",
-            sent_at=sent, body_snippet="Your order total £25.00 thank you.",
+            evidence_id="e2",
+            message_id="m2",
+            sender="a@b.com",
+            subject="Order",
+            sent_at=sent,
+            body_snippet="Your order total £25.00 thank you.",
         )
         pairs = CategoryPredictor.get_emails_for_display([em1, em2], Decimal("25.00"))
         assert len(pairs) == 1
@@ -419,15 +482,21 @@ class TestCategoryPredictor:
 
     def test_run_llm_flow_step1_missing_category_uses_fallback(self) -> None:
         """When step1 response omits 'category', fallback is first allowed path (or Expense)."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
         with patch.object(predictor, "_query_llm_extract", return_value=None):
-            with patch.object(predictor, "_query_llm_step1", return_value={
-                "improved_description": "Improved",
-                "confidence": 7,
-                "confident": False,
-                # no "category" key
-            }):
+            with patch.object(
+                predictor,
+                "_query_llm_step1",
+                return_value={
+                    "improved_description": "Improved",
+                    "confidence": 7,
+                    "confident": False,
+                    # no "category" key
+                },
+            ):
                 result = predictor._run_llm_flow(tx, [], ["Expenses:Food", "Expenses:Transport"])
         assert result is not None
         assert result["category"] == "Expenses:Food"
@@ -435,34 +504,50 @@ class TestCategoryPredictor:
 
     def test_run_llm_flow_step2_missing_category_uses_chosen(self) -> None:
         """When step2 response omits 'category', final category is step1 chosen."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
         with patch.object(predictor, "_query_llm_extract", return_value=None):
-            with patch.object(predictor, "_query_llm_step1", return_value={
-                "improved_description": "Improved",
-                "confidence": 8,
-                "confident": True,
-                "category": "Expenses:Food",
-            }):
-                with patch.object(predictor, "_query_llm_step2", return_value={
-                    "description": "Final desc",
-                    # no "category" key
-                }):
-                    result = predictor._run_llm_flow(tx, [], ["Expenses:Food", "Expenses:Food:Groceries"])
+            with patch.object(
+                predictor,
+                "_query_llm_step1",
+                return_value={
+                    "improved_description": "Improved",
+                    "confidence": 8,
+                    "confident": True,
+                    "category": "Expenses:Food",
+                },
+            ):
+                with patch.object(
+                    predictor,
+                    "_query_llm_step2",
+                    return_value={
+                        "description": "Final desc",
+                        # no "category" key
+                    },
+                ):
+                    result = predictor._run_llm_flow(
+                        tx, [], ["Expenses:Food", "Expenses:Food:Groceries"]
+                    )
         assert result is not None
         assert result["category"] == "Expenses:Food"
         assert result["description"] == "Final desc"
 
     def test_run_llm_flow_returns_none_when_no_allowed_paths(self) -> None:
         """When allowed_paths is empty or has no GBP expense/income paths, _run_llm_flow returns None."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
         result = predictor._run_llm_flow(tx, [], [])
         assert result is None
 
     def test_run_llm_flow_returns_none_when_step1_returns_none(self) -> None:
         """When step1 returns None (LLM timeout/invalid), _run_llm_flow returns None."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
         with patch.object(predictor, "_query_llm_extract", return_value=None):
             with patch.object(predictor, "_query_llm_step1", return_value=None):
@@ -471,14 +556,20 @@ class TestCategoryPredictor:
 
     def test_run_llm_flow_with_no_emails_runs_step1_without_email_block(self) -> None:
         """With no emails, extraction is skipped and step1 gets no Extracted from emails / Emails block."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
-        with patch.object(predictor, "_query_llm_step1", return_value={
-            "improved_description": "Done",
-            "confidence": 6,
-            "confident": False,
-            "category": "Expenses:Food",
-        }) as mock_step1:
+        with patch.object(
+            predictor,
+            "_query_llm_step1",
+            return_value={
+                "improved_description": "Done",
+                "confidence": 6,
+                "confident": False,
+                "category": "Expenses:Food",
+            },
+        ) as mock_step1:
             result = predictor._run_llm_flow(tx, [], ["Expenses:Food"])
         assert result is not None
         assert result["category"] == "Expenses:Food"
@@ -489,26 +580,44 @@ class TestCategoryPredictor:
 
     def test_run_llm_flow_uses_extracted_block_when_extraction_succeeds(self) -> None:
         """When extraction endpoint is set and extraction returns data, step1 receives extracted_from_emails."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(
-            mode=LlmMode.ONLINE, endpoint="http://x", model_name="y",
-            extraction_endpoint="http://extract", extraction_model="m",
-        ))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(
+                mode=LlmMode.ONLINE,
+                endpoint="http://x",
+                model_name="y",
+                extraction_endpoint="http://extract",
+                extraction_model="m",
+            )
+        )
         tx = _make_target_tx()
         em = EmailEvidence(
-            evidence_id="e1", message_id="m1", sender="s@b.com", subject="Order",
+            evidence_id="e1",
+            message_id="m1",
+            sender="s@b.com",
+            subject="Order",
             sent_at=datetime(2025, 1, 15, tzinfo=timezone.utc),
             body_snippet="Total £25.00 thanks.",
         )
-        with patch.object(predictor, "_query_llm_extract", return_value={
-            "seller_name": "Shop", "items": [{"description": "Item", "amount": "25"}],
-            "order_ids": ["ORD1"], "transaction_ids": [],
-        }):
-            with patch.object(predictor, "_query_llm_step1", return_value={
-                "improved_description": "Shop order ORD1",
-                "confidence": 8,
-                "confident": True,
-                "category": "Expenses:Food",
-            }) as mock_step1:
+        with patch.object(
+            predictor,
+            "_query_llm_extract",
+            return_value={
+                "seller_name": "Shop",
+                "items": [{"description": "Item", "amount": "25"}],
+                "order_ids": ["ORD1"],
+                "transaction_ids": [],
+            },
+        ):
+            with patch.object(
+                predictor,
+                "_query_llm_step1",
+                return_value={
+                    "improved_description": "Shop order ORD1",
+                    "confidence": 8,
+                    "confident": True,
+                    "category": "Expenses:Food",
+                },
+            ) as mock_step1:
                 result = predictor._run_llm_flow(tx, [em], ["Expenses:Food"])
         assert result is not None
         call_kw = mock_step1.call_args[1]
@@ -518,7 +627,9 @@ class TestCategoryPredictor:
 
     def test_run_llm_check_returns_none_when_flow_returns_none(self) -> None:
         """run_llm_check returns None when _run_llm_flow returns None (API returns 400, proposal not updated)."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
         with patch.object(predictor, "_run_llm_flow", return_value=None):
             result = predictor.run_llm_check(tx, [], None, ["Expenses:Food"])
@@ -526,24 +637,35 @@ class TestCategoryPredictor:
 
     def test_propose_skip_llm_true_does_not_call_run_llm_flow(self) -> None:
         """propose(..., skip_llm=True) does not invoke the LLM (run phase default)."""
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx(desc="Unknown")
         with patch.object(predictor, "_run_llm_flow") as mock_flow:
-            proposal = predictor.propose(tx, [], None, account_paths=["Expenses:Food"], skip_llm=True)
+            proposal = predictor.propose(
+                tx, [], None, account_paths=["Expenses:Food"], skip_llm=True
+            )
         mock_flow.assert_not_called()
         assert proposal.suggested_splits[0].account_path != ""
 
     def test_query_llm_returns_llm_suggestion_from_run_llm_flow(self) -> None:
         """_query_llm converts _run_llm_flow dict to LlmSuggestion (used when use_llm_during_run and confidence < 60%)."""
         from gnc_enrich.ml.predictor import LlmSuggestion
-        predictor = CategoryPredictor(llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y"))
+
+        predictor = CategoryPredictor(
+            llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
+        )
         tx = _make_target_tx()
-        with patch.object(predictor, "_run_llm_flow", return_value={
-            "extraction": None,
-            "category": "Expenses:Transport",
-            "description": "Train ticket",
-            "confidence": 0.85,
-        }):
+        with patch.object(
+            predictor,
+            "_run_llm_flow",
+            return_value={
+                "extraction": None,
+                "category": "Expenses:Transport",
+                "description": "Train ticket",
+                "confidence": 0.85,
+            },
+        ):
             out = predictor._query_llm(tx, [], ["Expenses:Food", "Expenses:Transport"])
         assert out is not None
         assert isinstance(out, LlmSuggestion)
@@ -567,6 +689,7 @@ class TestFeedbackTrainer:
         trainer.record_feedback(proposal, accepted=True, note="correct")
 
         from gnc_enrich.state.repository import StateRepository
+
         repo = StateRepository(tmp_path)
         feedback = repo.load_feedback()
         assert len(feedback) == 1

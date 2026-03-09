@@ -203,7 +203,9 @@ class TestEmailIndexRepository:
             ev_date = ev.sent_at.date() if hasattr(ev.sent_at, "date") else ev.sent_at
             assert ev_date >= min_date
 
-    def test_build_with_min_date_still_writes_old_emails_to_index_file(self, tmp_path: Path) -> None:
+    def test_build_with_min_date_still_writes_old_emails_to_index_file(
+        self, tmp_path: Path
+    ) -> None:
         """Emails below min_date are written to the index file for future runs."""
         emails_dir = tmp_path / "emails"
         emails_dir.mkdir()
@@ -218,7 +220,9 @@ class TestEmailIndexRepository:
         repo.build_or_load(emails_dir, tmp_path, min_date=min_date)
         assert len(repo.entries) == 0
         lines = [
-            line for line in (tmp_path / "email_index.jsonl").read_text().splitlines() if line.strip()
+            line
+            for line in (tmp_path / "email_index.jsonl").read_text().splitlines()
+            if line.strip()
         ]
         data_lines = [line for line in lines if '"_schema_version"' not in line]
         assert len(data_lines) == 1
@@ -253,6 +257,7 @@ class TestEmailIndexRepository:
         repo.build_or_load(FIXTURES_DIR, tmp_path)
 
         import json
+
         manifest = json.loads((tmp_path / "email_index_manifest.json").read_text())
         assert "order_confirm.eml" in manifest["indexed_files"]
         assert len(manifest["indexed_files"]) == 13
@@ -296,9 +301,20 @@ class TestEmailIndexRepository:
         state_dir.mkdir()
         index_path = state_dir / "email_index.jsonl"
         index_path.write_text(
-            json.dumps({"_schema_version": 1}) + "\n"
-            + json.dumps({"evidence_id": "e1", "message_id": "m1", "sender": "a@b.com", "subject": "S", "sent_at": "2025-01-15T12:00:00+00:00"}) + "\n"
-            + json.dumps({"not_evidence": "invalid"}) + "\n",
+            json.dumps({"_schema_version": 1})
+            + "\n"
+            + json.dumps(
+                {
+                    "evidence_id": "e1",
+                    "message_id": "m1",
+                    "sender": "a@b.com",
+                    "subject": "S",
+                    "sent_at": "2025-01-15T12:00:00+00:00",
+                }
+            )
+            + "\n"
+            + json.dumps({"not_evidence": "invalid"})
+            + "\n",
             encoding="utf-8",
         )
         (state_dir / "email_index_manifest.json").write_text(
@@ -314,18 +330,20 @@ class TestEmailIndexRepository:
     def test_build_or_load_skips_corrupt_index_line(self, tmp_path: Path) -> None:
         """When email_index.jsonl has a corrupt line, it is skipped and loading is non-fatal."""
         import json
+
         state_dir = tmp_path / "state"
         state_dir.mkdir()
         index_path = state_dir / "email_index.jsonl"
         index_path.write_text(
             json.dumps({"_schema_version": 1}) + "\n"
-            "{invalid json\n"
-            + json.dumps({"_schema_version": 1}) + "\n",
+            "{invalid json\n" + json.dumps({"_schema_version": 1}) + "\n",
             encoding="utf-8",
         )
         (tmp_path / "emails").mkdir()
         manifest_path = state_dir / "email_index_manifest.json"
-        manifest_path.write_text(json.dumps({"_schema_version": 1, "indexed_files": []}), encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps({"_schema_version": 1, "indexed_files": []}), encoding="utf-8"
+        )
         repo = EmailIndexRepository()
         repo.build_or_load(tmp_path / "emails", state_dir)
         assert len(repo._entries) == 0

@@ -25,7 +25,9 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser with run/review/apply subcommands."""
     parser = argparse.ArgumentParser(prog="gnc-enrich")
     parser.add_argument(
-        "-v", "--verbose", action="store_true",
+        "-v",
+        "--verbose",
+        action="store_true",
         help="Enable debug-level trace logging",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -79,17 +81,23 @@ def build_parser() -> argparse.ArgumentParser:
     apply_cmd = sub.add_parser("apply", help="Apply approved changes to GnuCash")
     apply_cmd.add_argument("--state-dir", type=Path, required=True)
     apply_cmd.add_argument(
-        "--create-backup", action="store_true", default=True,
+        "--create-backup",
+        action="store_true",
+        default=True,
         help="Create a timestamped backup before writing (default: true)",
     )
     apply_cmd.add_argument(
-        "--no-backup", action="store_false", dest="create_backup",
+        "--no-backup",
+        action="store_false",
+        dest="create_backup",
         help="Skip backup creation",
     )
     apply_cmd.add_argument("--backup-dir", type=Path)
     apply_cmd.add_argument("--in-place", action="store_true", default=True)
     apply_cmd.add_argument(
-        "--no-in-place", action="store_false", dest="in_place",
+        "--no-in-place",
+        action="store_false",
+        dest="in_place",
         help="Write to a new file instead of modifying the original",
     )
     apply_cmd.add_argument("--dry-run", action="store_true")
@@ -107,7 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--backup",
         default="",
         help="Optional backup filename (in the state's backups directory) to restore. "
-             "If omitted, the most recent backup is used.",
+        "If omitted, the most recent backup is used.",
     )
     rollback.add_argument(
         "--list-backups",

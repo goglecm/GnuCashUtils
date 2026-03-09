@@ -101,6 +101,7 @@ def test_pipeline_respects_skipped(tmp_path: Path) -> None:
 
     state = StateRepository(dirs["state"])
     from gnc_enrich.domain.models import SkipRecord
+
     state.save_skip(SkipRecord(tx_id="tx_unspec1", reason="skip test"))
 
     pipeline = EnrichmentPipeline()
@@ -124,6 +125,7 @@ def test_pipeline_include_skipped(tmp_path: Path) -> None:
 
     state = StateRepository(dirs["state"])
     from gnc_enrich.domain.models import SkipRecord
+
     state.save_skip(SkipRecord(tx_id="tx_unspec1", reason="skip test"))
 
     pipeline = EnrichmentPipeline()
@@ -245,9 +247,7 @@ def test_email_index_min_date_uses_earliest_expense_candidate(tmp_path: Path) ->
     expected_min = date(2025, 1, 15) - timedelta(days=7)
     assert expected_min == date(2025, 1, 8)
 
-    with patch(
-        "gnc_enrich.services.pipeline.EmailIndexRepository"
-    ) as mock_repo_class:
+    with patch("gnc_enrich.services.pipeline.EmailIndexRepository") as mock_repo_class:
         mock_repo = mock_repo_class.return_value
         pipeline = EnrichmentPipeline()
         pipeline.build_proposals(config)

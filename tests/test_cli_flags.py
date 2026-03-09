@@ -10,7 +10,6 @@ import pytest
 
 from gnc_enrich.cli import build_parser, main
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -88,11 +87,16 @@ def cli_env(tmp_path: Path) -> dict[str, Path]:
 def _run_args(env: dict[str, Path], extra: list[str] | None = None) -> list[str]:
     base = [
         "run",
-        "--gnucash-path", str(env["gnucash"]),
-        "--emails-dir", str(env["emails"]),
-        "--receipts-dir", str(env["receipts"]),
-        "--processed-receipts-dir", str(env["processed"]),
-        "--state-dir", str(env["state"]),
+        "--gnucash-path",
+        str(env["gnucash"]),
+        "--emails-dir",
+        str(env["emails"]),
+        "--receipts-dir",
+        str(env["receipts"]),
+        "--processed-receipts-dir",
+        str(env["processed"]),
+        "--state-dir",
+        str(env["state"]),
     ]
     return base + (extra or [])
 
@@ -171,9 +175,14 @@ class TestRunFlags:
         state = StateRepository(cli_env["state"])
         svc = ReviewQueueService(state)
         p = svc.all_proposals()[0]
-        svc.submit_decision(ReviewDecision(
-            tx_id=p.tx_id, action="skip", final_description="", final_splits=[],
-        ))
+        svc.submit_decision(
+            ReviewDecision(
+                tx_id=p.tx_id,
+                action="skip",
+                final_description="",
+                final_splits=[],
+            )
+        )
 
         config_no_skip = RunConfig(
             gnucash_path=cli_env["gnucash"],
@@ -214,18 +223,31 @@ class TestRunFlags:
             build_parser().parse_args(_run_args(cli_env, ["--llm-mode", "invalid"]))
 
     def test_llm_endpoint_and_model(self, cli_env: dict[str, Path]) -> None:
-        ns = build_parser().parse_args(_run_args(cli_env, [
-            "--llm-mode", "online",
-            "--llm-endpoint", "http://localhost:11434/v1/chat/completions",
-            "--llm-model", "mistral",
-        ]))
+        ns = build_parser().parse_args(
+            _run_args(
+                cli_env,
+                [
+                    "--llm-mode",
+                    "online",
+                    "--llm-endpoint",
+                    "http://localhost:11434/v1/chat/completions",
+                    "--llm-model",
+                    "mistral",
+                ],
+            )
+        )
         assert ns.llm_endpoint == "http://localhost:11434/v1/chat/completions"
         assert ns.llm_model == "mistral"
 
     def test_llm_use_web_flag(self, cli_env: dict[str, Path]) -> None:
-        ns = build_parser().parse_args(_run_args(cli_env, [
-            "--llm-use-web",
-        ]))
+        ns = build_parser().parse_args(
+            _run_args(
+                cli_env,
+                [
+                    "--llm-use-web",
+                ],
+            )
+        )
         assert getattr(ns, "llm_use_web", False) is True
 
     def test_run_missing_required_arg_fails(self) -> None:
@@ -263,6 +285,7 @@ class TestReviewFlags:
         """main() with 'review' should construct and run ReviewWebApp."""
         from gnc_enrich.config import RunConfig
         from gnc_enrich.services.pipeline import EnrichmentPipeline
+
         RunConfig(
             gnucash_path=cli_env["gnucash"],
             emails_dir=cli_env["emails"],
@@ -270,21 +293,32 @@ class TestReviewFlags:
             processed_receipts_dir=cli_env["processed"],
             state_dir=cli_env["state"],
         )
-        EnrichmentPipeline().run(RunConfig(
-            gnucash_path=cli_env["gnucash"],
-            emails_dir=cli_env["emails"],
-            receipts_dir=cli_env["receipts"],
-            processed_receipts_dir=cli_env["processed"],
-            state_dir=cli_env["state"],
-        ))
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=cli_env["gnucash"],
+                emails_dir=cli_env["emails"],
+                receipts_dir=cli_env["receipts"],
+                processed_receipts_dir=cli_env["processed"],
+                state_dir=cli_env["state"],
+            )
+        )
 
         with patch("gnc_enrich.review.webapp.ReviewWebApp") as MockWebApp:
             mock_instance = MagicMock()
             MockWebApp.return_value = mock_instance
             mock_instance.run.return_value = None
 
-            rc = main(["review", "--state-dir", str(cli_env["state"]),
-                        "--host", "0.0.0.0", "--port", "5000"])
+            rc = main(
+                [
+                    "review",
+                    "--state-dir",
+                    str(cli_env["state"]),
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    "5000",
+                ]
+            )
             assert rc == 0
             mock_instance.run.assert_called_once_with("0.0.0.0", 5000)
 
@@ -316,14 +350,21 @@ class TestApplyFlags:
         assert ns.create_backup is False
 
     def test_backup_retention_flag(self) -> None:
-        ns = build_parser().parse_args(["apply", "--state-dir", "/tmp/s", "--backup-retention", "5"])
+        ns = build_parser().parse_args(
+            ["apply", "--state-dir", "/tmp/s", "--backup-retention", "5"]
+        )
         assert ns.backup_retention == 5
 
     def test_backup_dir_flag(self, tmp_path: Path) -> None:
-        ns = build_parser().parse_args([
-            "apply", "--state-dir", "/tmp/s",
-            "--backup-dir", str(tmp_path / "backups"),
-        ])
+        ns = build_parser().parse_args(
+            [
+                "apply",
+                "--state-dir",
+                "/tmp/s",
+                "--backup-dir",
+                str(tmp_path / "backups"),
+            ]
+        )
         assert ns.backup_dir == tmp_path / "backups"
 
     def test_backup_dir_default_none(self) -> None:
@@ -350,21 +391,26 @@ class TestApplyFlags:
         from gnc_enrich.review.service import ReviewQueueService
         from gnc_enrich.domain.models import ReviewDecision
 
-        EnrichmentPipeline().run(RunConfig(
-            gnucash_path=cli_env["gnucash"],
-            emails_dir=cli_env["emails"],
-            receipts_dir=cli_env["receipts"],
-            processed_receipts_dir=cli_env["processed"],
-            state_dir=cli_env["state"],
-        ))
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=cli_env["gnucash"],
+                emails_dir=cli_env["emails"],
+                receipts_dir=cli_env["receipts"],
+                processed_receipts_dir=cli_env["processed"],
+                state_dir=cli_env["state"],
+            )
+        )
         state = StateRepository(cli_env["state"])
         svc = ReviewQueueService(state)
         for p in svc.all_proposals():
-            svc.submit_decision(ReviewDecision(
-                tx_id=p.tx_id, action="approve",
-                final_description=p.suggested_description,
-                final_splits=p.suggested_splits,
-            ))
+            svc.submit_decision(
+                ReviewDecision(
+                    tx_id=p.tx_id,
+                    action="approve",
+                    final_description=p.suggested_description,
+                    final_splits=p.suggested_splits,
+                )
+            )
 
         rc = main(["apply", "--state-dir", str(cli_env["state"]), "--dry-run"])
         assert rc == 0
@@ -377,32 +423,42 @@ class TestApplyFlags:
         from gnc_enrich.review.service import ReviewQueueService
         from gnc_enrich.domain.models import ReviewDecision
 
-        EnrichmentPipeline().run(RunConfig(
-            gnucash_path=cli_env["gnucash"],
-            emails_dir=cli_env["emails"],
-            receipts_dir=cli_env["receipts"],
-            processed_receipts_dir=cli_env["processed"],
-            state_dir=cli_env["state"],
-        ))
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=cli_env["gnucash"],
+                emails_dir=cli_env["emails"],
+                receipts_dir=cli_env["receipts"],
+                processed_receipts_dir=cli_env["processed"],
+                state_dir=cli_env["state"],
+            )
+        )
         state = StateRepository(cli_env["state"])
         svc = ReviewQueueService(state)
         for p in svc.all_proposals():
-            svc.submit_decision(ReviewDecision(
-                tx_id=p.tx_id, action="approve",
-                final_description=p.suggested_description,
-                final_splits=p.suggested_splits,
-            ))
+            svc.submit_decision(
+                ReviewDecision(
+                    tx_id=p.tx_id,
+                    action="approve",
+                    final_description=p.suggested_description,
+                    final_splits=p.suggested_splits,
+                )
+            )
 
         rc = main(["apply", "--state-dir", str(cli_env["state"]), "--in-place"])
         assert rc == 0
 
     def test_all_apply_flags_combined(self, tmp_path: Path) -> None:
-        ns = build_parser().parse_args([
-            "apply", "--state-dir", str(tmp_path),
-            "--create-backup",
-            "--backup-dir", str(tmp_path / "bak"),
-            "--in-place",
-        ])
+        ns = build_parser().parse_args(
+            [
+                "apply",
+                "--state-dir",
+                str(tmp_path),
+                "--create-backup",
+                "--backup-dir",
+                str(tmp_path / "bak"),
+                "--in-place",
+            ]
+        )
         assert ns.create_backup is True
         assert ns.backup_dir == tmp_path / "bak"
         assert ns.in_place is True

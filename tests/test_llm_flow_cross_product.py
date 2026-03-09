@@ -32,7 +32,9 @@ def _tx(desc: str = "Card Payment", amount: str = "25.00") -> Transaction:
     )
 
 
-def _email(evidence_id: str = "e1", body: str = "Your order total £25.00 thank you.") -> EmailEvidence:
+def _email(
+    evidence_id: str = "e1", body: str = "Your order total £25.00 thank you."
+) -> EmailEvidence:
     return EmailEvidence(
         evidence_id=evidence_id,
         message_id=f"<{evidence_id}>",
@@ -73,7 +75,9 @@ class TestFlowMainDisabled:
             llm_config=LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="y")
         )
         with patch.object(predictor, "_run_llm_flow") as mock_flow:
-            predictor.propose(_tx(desc="Unknown"), [], None, account_paths=ACCOUNT_PATHS, skip_llm=True)
+            predictor.propose(
+                _tx(desc="Unknown"), [], None, account_paths=ACCOUNT_PATHS, skip_llm=True
+            )
         mock_flow.assert_not_called()
 
     def test_query_llm_returns_none_when_disabled(self) -> None:
@@ -105,7 +109,10 @@ class TestFlowMainOnExtractionOffWebOffNoEmails:
         with patch.object(
             predictor,
             "_query_llm_extract_from_description",
-            return_value={"seller_name": "Shop", "items": [{"description": "Item", "amount": "25"}]},
+            return_value={
+                "seller_name": "Shop",
+                "items": [{"description": "Item", "amount": "25"}],
+            },
         ) as mock_ext:
             with patch.object(
                 predictor,
@@ -120,7 +127,10 @@ class TestFlowMainOnExtractionOffWebOffNoEmails:
                 with patch.object(
                     predictor,
                     "_query_llm_step2",
-                    return_value={"category": "Expenses:Food:Groceries", "description": "Shop Item"},
+                    return_value={
+                        "category": "Expenses:Food:Groceries",
+                        "description": "Shop Item",
+                    },
                 ):
                     result = predictor._run_llm_flow(_tx(), [], ACCOUNT_PATHS)
         assert result is not None
@@ -350,7 +360,10 @@ class TestFlowMainOnExtractionOffWebOnNoEmails:
         with patch.object(
             predictor,
             "_query_llm_extract_from_description",
-            return_value={"seller_name": "Amazon", "items": [{"description": "Book", "amount": "25"}]},
+            return_value={
+                "seller_name": "Amazon",
+                "items": [{"description": "Book", "amount": "25"}],
+            },
         ) as mock_ext:
             with patch.object(
                 predictor,
@@ -610,7 +623,10 @@ class TestFlowMainOnExtractionOnWebOffNoEmails:
         with patch.object(
             predictor,
             "_query_llm_extract_from_description",
-            return_value={"seller_name": "Store", "items": [{"description": "Item", "amount": "25"}]},
+            return_value={
+                "seller_name": "Store",
+                "items": [{"description": "Item", "amount": "25"}],
+            },
         ):
             with patch.object(
                 predictor,
@@ -1129,4 +1145,3 @@ class TestFlowMainOnExtractionOnWebOnHasEmails:
         assert result["category"] == "Expenses:Food:Groceries"
         assert result["confidence"] == 0.8
         assert result["extraction"] is not None
-

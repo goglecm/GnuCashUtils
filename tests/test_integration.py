@@ -55,31 +55,37 @@ def test_full_run_review_apply_cycle(tmp_path: Path) -> None:
 
     prop1 = svc.next_proposal()
     assert prop1 is not None
-    svc.submit_decision(ReviewDecision(
-        tx_id=prop1.tx_id,
-        action="approve",
-        final_description=prop1.suggested_description,
-        final_splits=prop1.suggested_splits,
-    ))
+    svc.submit_decision(
+        ReviewDecision(
+            tx_id=prop1.tx_id,
+            action="approve",
+            final_description=prop1.suggested_description,
+            final_splits=prop1.suggested_splits,
+        )
+    )
 
     prop2 = svc.next_proposal()
     assert prop2 is not None
-    svc.submit_decision(ReviewDecision(
-        tx_id=prop2.tx_id,
-        action="edit",
-        final_description="Edited Description 01/02/2025",
-        final_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
-    ))
+    svc.submit_decision(
+        ReviewDecision(
+            tx_id=prop2.tx_id,
+            action="edit",
+            final_description="Edited Description 01/02/2025",
+            final_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
+        )
+    )
 
     prop3 = svc.next_proposal()
     assert prop3 is not None
-    svc.submit_decision(ReviewDecision(
-        tx_id=prop3.tx_id,
-        action="skip",
-        final_description="",
-        final_splits=[],
-        reviewer_note="Low confidence",
-    ))
+    svc.submit_decision(
+        ReviewDecision(
+            tx_id=prop3.tx_id,
+            action="skip",
+            final_description="",
+            final_splits=[],
+            reviewer_note="Low confidence",
+        )
+    )
 
     assert svc.pending_count == 0
 
@@ -154,12 +160,15 @@ def test_full_cycle_via_flask_client(tmp_path: Path) -> None:
 
     proposals = svc.all_proposals()
     for p in proposals:
-        client.post(f"/review/{p.proposal_id}/decide", data={
-            "action": "approve",
-            "description": p.suggested_description,
-            "split_path": p.suggested_splits[0].account_path,
-            "split_amount": str(p.suggested_splits[0].amount),
-        })
+        client.post(
+            f"/review/{p.proposal_id}/decide",
+            data={
+                "action": "approve",
+                "description": p.suggested_description,
+                "split_path": p.suggested_splits[0].account_path,
+                "split_amount": str(p.suggested_splits[0].amount),
+            },
+        )
 
     resp = client.get("/")
     assert resp.status_code == 200
@@ -177,14 +186,21 @@ def test_cli_run_command_dispatches(tmp_path: Path) -> None:
 
     from gnc_enrich.cli import main
 
-    rc = main([
-        "run",
-        "--gnucash-path", str(dirs["gnucash"]),
-        "--emails-dir", str(dirs["emails"]),
-        "--receipts-dir", str(dirs["receipts"]),
-        "--processed-receipts-dir", str(dirs["processed"]),
-        "--state-dir", str(dirs["state"]),
-    ])
+    rc = main(
+        [
+            "run",
+            "--gnucash-path",
+            str(dirs["gnucash"]),
+            "--emails-dir",
+            str(dirs["emails"]),
+            "--receipts-dir",
+            str(dirs["receipts"]),
+            "--processed-receipts-dir",
+            str(dirs["processed"]),
+            "--state-dir",
+            str(dirs["state"]),
+        ]
+    )
     assert rc == 0
 
     state = StateRepository(dirs["state"])

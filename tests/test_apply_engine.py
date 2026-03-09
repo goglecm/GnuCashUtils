@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 
 from gnc_enrich.apply.engine import ApplyEngine
-from gnc_enrich.domain.models import EvidencePacket, Proposal, ReceiptEvidence, ReviewDecision, Split
+from gnc_enrich.domain.models import (
+    EvidencePacket,
+    Proposal,
+    ReceiptEvidence,
+    ReviewDecision,
+    Split,
+)
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.state.repository import StateRepository
 from tests.conftest import SAMPLE_GNUCASH_XML
@@ -24,48 +30,65 @@ def _setup_state(tmp_path: Path) -> tuple[Path, Path]:
     state_dir = tmp_path / "state"
     state = StateRepository(state_dir)
 
-    state.save_metadata("run_config", {
-        "gnucash_path": str(gnucash),
-        "processed_receipts_dir": str(tmp_path / "processed"),
-    })
+    state.save_metadata(
+        "run_config",
+        {
+            "gnucash_path": str(gnucash),
+            "processed_receipts_dir": str(tmp_path / "processed"),
+        },
+    )
 
     proposals = [
         Proposal(
-            proposal_id="p1", tx_id="tx_unspec1",
+            proposal_id="p1",
+            tx_id="tx_unspec1",
             suggested_description="Card Payment - Tesco 15/01/2025",
             suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
-            confidence=0.85, rationale="ML + email match",
-            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            confidence=0.85,
+            rationale="ML + email match",
+            tx_date=date(2025, 1, 15),
+            tx_amount=Decimal("25.00"),
             original_description="Card Payment",
             original_splits=[Split(account_path="Unspecified", amount=Decimal("25.00"))],
         ),
         Proposal(
-            proposal_id="p2", tx_id="tx_unspec2",
+            proposal_id="p2",
+            tx_id="tx_unspec2",
             suggested_description="Direct Debit 01/02/2025",
             suggested_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
-            confidence=0.6, rationale="Heuristic",
-            tx_date=date(2025, 2, 1), tx_amount=Decimal("9.50"),
+            confidence=0.6,
+            rationale="Heuristic",
+            tx_date=date(2025, 2, 1),
+            tx_amount=Decimal("9.50"),
             original_description="Direct Debit",
             original_splits=[Split(account_path="Unspecified", amount=Decimal("9.50"))],
         ),
         Proposal(
-            proposal_id="p3", tx_id="tx_imbalance1",
+            proposal_id="p3",
+            tx_id="tx_imbalance1",
             suggested_description="POS Transaction 20/01/2025",
-            suggested_splits=[Split(account_path="Expenses:Miscellaneous", amount=Decimal("32.00"))],
-            confidence=0.4, rationale="Low confidence",
-            tx_date=date(2025, 1, 20), tx_amount=Decimal("32.00"),
+            suggested_splits=[
+                Split(account_path="Expenses:Miscellaneous", amount=Decimal("32.00"))
+            ],
+            confidence=0.4,
+            rationale="Low confidence",
+            tx_date=date(2025, 1, 20),
+            tx_amount=Decimal("32.00"),
             original_description="POS Transaction",
             original_splits=[Split(account_path="Imbalance-GBP", amount=Decimal("32.00"))],
         ),
         Proposal(
-            proposal_id="p4", tx_id="tx_transfer",
+            proposal_id="p4",
+            tx_id="tx_transfer",
             suggested_description="Transfer to Savings 25/01/2025",
             suggested_splits=[
                 Split(account_path="Current Account", amount=Decimal("-500.00")),
                 Split(account_path="Savings Account", amount=Decimal("500.00")),
             ],
-            confidence=1.0, rationale="Transfer between own accounts",
-            tx_date=date(2025, 1, 25), tx_amount=Decimal("500.00"),
+            confidence=1.0,
+            rationale="Transfer between own accounts",
+            tx_date=date(2025, 1, 25),
+            tx_amount=Decimal("500.00"),
             original_description="Transfer to Savings",
             original_splits=[
                 Split(account_path="Current Account", amount=Decimal("-500.00")),
@@ -76,30 +99,42 @@ def _setup_state(tmp_path: Path) -> tuple[Path, Path]:
     ]
     state.save_proposals(proposals)
 
-    state.save_decision(ReviewDecision(
-        tx_id="tx_unspec1", action="approve",
-        final_description="Tesco Groceries 15/01/2025",
-        final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
-        decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
-    ))
-    state.save_decision(ReviewDecision(
-        tx_id="tx_unspec2", action="edit",
-        final_description="BT Broadband 01/02/2025",
-        final_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
-    ))
-    state.save_decision(ReviewDecision(
-        tx_id="tx_imbalance1", action="skip",
-        final_description="",
-        final_splits=[],
-    ))
-    state.save_decision(ReviewDecision(
-        tx_id="tx_transfer", action="approve",
-        final_description="Transfer to Savings 25/01/2025",
-        final_splits=[
-            Split(account_path="Expenses:Miscellaneous", amount=Decimal("500.00")),
-        ],
-        decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
-    ))
+    state.save_decision(
+        ReviewDecision(
+            tx_id="tx_unspec1",
+            action="approve",
+            final_description="Tesco Groceries 15/01/2025",
+            final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+        )
+    )
+    state.save_decision(
+        ReviewDecision(
+            tx_id="tx_unspec2",
+            action="edit",
+            final_description="BT Broadband 01/02/2025",
+            final_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("9.50"))],
+        )
+    )
+    state.save_decision(
+        ReviewDecision(
+            tx_id="tx_imbalance1",
+            action="skip",
+            final_description="",
+            final_splits=[],
+        )
+    )
+    state.save_decision(
+        ReviewDecision(
+            tx_id="tx_transfer",
+            action="approve",
+            final_description="Transfer to Savings 25/01/2025",
+            final_splits=[
+                Split(account_path="Expenses:Miscellaneous", amount=Decimal("500.00")),
+            ],
+            decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+        )
+    )
 
     return gnucash, state_dir
 
@@ -177,7 +212,9 @@ class TestApply:
 
         journal_path = state_dir / "apply_journal.jsonl"
         assert journal_path.exists()
-        entries = [json.loads(line) for line in journal_path.read_text().splitlines() if line.strip()]
+        entries = [
+            json.loads(line) for line in journal_path.read_text().splitlines() if line.strip()
+        ]
         data_entries = [e for e in entries if "_schema_version" not in e]
         assert len(data_entries) == 3  # approved + edited + transfer
         tx_ids = {e["tx_id"] for e in data_entries}
@@ -218,7 +255,8 @@ class TestApply:
 
         journal_path = state_dir / "apply_journal.jsonl"
         entries = [
-            json.loads(line) for line in journal_path.read_text().splitlines()
+            json.loads(line)
+            for line in journal_path.read_text().splitlines()
             if line.strip() and '"_schema_version"' not in line
         ]
         tx1_entry = next(e for e in entries if e["tx_id"] == "tx_unspec1")
@@ -268,13 +306,15 @@ class TestApply:
         state.save_metadata("run_config", {"gnucash_path": str(gnucash)})
         state.save_proposals([])
 
-        state.save_decision(ReviewDecision(
-            tx_id="tx_unspec1",
-            action="approve",
-            final_description="Updated without proposal",
-            final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
-            decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
-        ))
+        state.save_decision(
+            ReviewDecision(
+                tx_id="tx_unspec1",
+                action="approve",
+                final_description="Updated without proposal",
+                final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+                decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+            )
+        )
 
         engine = ApplyEngine()
         engine.apply(state_dir)
@@ -298,17 +338,23 @@ class TestApply:
 
         state_dir = tmp_path / "state"
         state = StateRepository(state_dir)
-        state.save_metadata("run_config", {
-            "gnucash_path": str(gnucash),
-            "processed_receipts_dir": str(processed_dir),
-        })
+        state.save_metadata(
+            "run_config",
+            {
+                "gnucash_path": str(gnucash),
+                "processed_receipts_dir": str(processed_dir),
+            },
+        )
         # Proposal for tx_unspec1 (amount £25) but receipt parsed_total £99 — mismatch
         prop = Proposal(
-            proposal_id="p1", tx_id="tx_unspec1",
+            proposal_id="p1",
+            tx_id="tx_unspec1",
             suggested_description="Tesco 15/01/2025",
             suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
-            confidence=0.8, rationale="ML",
-            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            confidence=0.8,
+            rationale="ML",
+            tx_date=date(2025, 1, 15),
+            tx_amount=Decimal("25.00"),
             original_description="Card Payment",
             original_splits=[Split(account_path="Unspecified", amount=Decimal("25.00"))],
             evidence=EvidencePacket(
@@ -322,12 +368,15 @@ class TestApply:
             ),
         )
         state.save_proposals([prop])
-        state.save_decision(ReviewDecision(
-            tx_id="tx_unspec1", action="approve",
-            final_description="Tesco 15/01/2025",
-            final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
-            decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
-        ))
+        state.save_decision(
+            ReviewDecision(
+                tx_id="tx_unspec1",
+                action="approve",
+                final_description="Tesco 15/01/2025",
+                final_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+                decided_at=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
+            )
+        )
 
         ApplyEngine().apply(state_dir)
 
@@ -350,10 +399,14 @@ class TestApply:
         state = StateRepository(state_dir)
         state.save_metadata("run_config", {"gnucash_path": str(invalid)})
         state.save_proposals([])
-        state.save_decision(ReviewDecision(
-            tx_id="tx1", action="approve",
-            final_description="Desc", final_splits=[Split(account_path="Expenses:Food", amount=Decimal("10.00"))],
-        ))
+        state.save_decision(
+            ReviewDecision(
+                tx_id="tx1",
+                action="approve",
+                final_description="Desc",
+                final_splits=[Split(account_path="Expenses:Food", amount=Decimal("10.00"))],
+            )
+        )
         engine = ApplyEngine()
         with pytest.raises(ValueError, match="gnc:book|No.*book"):
             engine.apply(state_dir)
@@ -373,13 +426,17 @@ class TestRollback:
 
         mod_loader = GnuCashLoader()
         mod_txs = mod_loader.load_transactions(gnucash)
-        assert {t.tx_id: t.description for t in mod_txs}["tx_unspec1"] != original_desc["tx_unspec1"]
+        assert {t.tx_id: t.description for t in mod_txs}["tx_unspec1"] != original_desc[
+            "tx_unspec1"
+        ]
 
         engine.rollback(state_dir)
 
         restored_loader = GnuCashLoader()
         restored_txs = restored_loader.load_transactions(gnucash)
-        assert {t.tx_id: t.description for t in restored_txs}["tx_unspec1"] == original_desc["tx_unspec1"]
+        assert {t.tx_id: t.description for t in restored_txs}["tx_unspec1"] == original_desc[
+            "tx_unspec1"
+        ]
 
     def test_rollback_fails_without_backup(self, tmp_path: Path) -> None:
         state_dir = tmp_path / "state"

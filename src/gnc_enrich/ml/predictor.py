@@ -46,6 +46,7 @@ def _has_name_like_content(s: str) -> bool:
 @dataclass(frozen=True)
 class LlmSuggestion:
     """Structured result from LLM when suggesting category and description."""
+
     category: str
     reason: str
     description: str
@@ -73,9 +74,9 @@ class CategoryPredictor:
 
     def _train(self, transactions: list[Transaction]) -> None:
         categorized = [
-            tx for tx in transactions
-            if tx.original_category
-            and tx.original_category not in ("Unspecified", "Imbalance-GBP")
+            tx
+            for tx in transactions
+            if tx.original_category and tx.original_category not in ("Unspecified", "Imbalance-GBP")
         ]
         if len(categorized) < 2:
             logger.warning("Not enough categorised history to train (%d)", len(categorized))
@@ -101,7 +102,9 @@ class CategoryPredictor:
 
         self._classes = list(self._classifier.classes_)
         self._trained = True
-        logger.info("Trained on %d transactions across %d categories", len(categorized), len(self._classes))
+        logger.info(
+            "Trained on %d transactions across %d categories", len(categorized), len(self._classes)
+        )
 
     def _featurize_text(
         self,
@@ -162,18 +165,18 @@ class CategoryPredictor:
 
         if emails:
             top = emails[0]
-            rationale_parts.append(f"Top email match: {(top.sender or '')[:50]} - {(top.subject or '')[:50]}")
-            breakdown.append(f"Email evidence: {(top.sender or '')[:50]} — {(top.subject or '')[:50]}")
+            rationale_parts.append(
+                f"Top email match: {(top.sender or '')[:50]} - {(top.subject or '')[:50]}"
+            )
+            breakdown.append(
+                f"Email evidence: {(top.sender or '')[:50]} — {(top.subject or '')[:50]}"
+            )
 
         if receipt and receipt.parsed_total is not None:
             rationale_parts.append(f"Receipt total: £{receipt.parsed_total}")
             breakdown.append(f"Receipt total: £{receipt.parsed_total}")
 
-        if (
-            not skip_llm
-            and self._llm_config.mode != LlmMode.DISABLED
-            and confidence < 0.6
-        ):
+        if not skip_llm and self._llm_config.mode != LlmMode.DISABLED and confidence < 0.6:
             llm_suggestion = self._query_llm(tx, emails, account_paths or [])
             if llm_suggestion:
                 rationale_parts.append(
@@ -184,7 +187,9 @@ class CategoryPredictor:
                     f"LLM picked: {llm_suggestion.category}"
                     + (f". Reason: {llm_suggestion.reason}" if llm_suggestion.reason else "")
                 )
-                if llm_suggestion.category and (not account_paths or llm_suggestion.category in account_paths):
+                if llm_suggestion.category and (
+                    not account_paths or llm_suggestion.category in account_paths
+                ):
                     suggested_category = llm_suggestion.category
                 if llm_suggestion.description:
                     llm_description = llm_suggestion.description.strip()
@@ -193,7 +198,9 @@ class CategoryPredictor:
             suggested_category = "Expenses:Miscellaneous"
             if not breakdown or "fallback" not in breakdown[-1].lower():
                 breakdown.append("Default category (no Unspecified/Imbalance suggested)")
-        suggested_desc = llm_description if llm_description else self._build_description(tx, emails, receipt)
+        suggested_desc = (
+            llm_description if llm_description else self._build_description(tx, emails, receipt)
+        )
         suggested_splits = [
             Split(account_path=suggested_category, amount=tx.amount),
         ]
@@ -228,11 +235,7 @@ class CategoryPredictor:
             return None
         if not tx.account_name:
             return None
-        is_refund = any(
-            sp.amount > 0
-            for sp in tx.splits
-            if sp.account_path == tx.account_name
-        )
+        is_refund = any(sp.amount > 0 for sp in tx.splits if sp.account_path == tx.account_name)
         if not is_refund:
             return None
         text = self._featurize_text(tx)
@@ -243,9 +246,7 @@ class CategoryPredictor:
             return self._classes[best_idx]
         return None
 
-    def _fallback_category(
-        self, tx: Transaction, emails: list[EmailEvidence]
-    ) -> str:
+    def _fallback_category(self, tx: Transaction, emails: list[EmailEvidence]) -> str:
         text = tx.description.lower()
         if emails:
             text += " " + " ".join(e.sender.lower() + " " + e.subject.lower() for e in emails[:3])
@@ -254,15 +255,42 @@ class CategoryPredictor:
     def _category_from_text(self, text: str, account_paths: list[str] | None = None) -> str:
         """Suggest a category from free text using keyword heuristics.
         If account_paths is provided, returns a leaf path from that list under the matched
-        heuristic category when possible; otherwise returns the top-level heuristic (e.g. Expenses:Food)."""
+        heuristic category when possible; otherwise returns the top-level heuristic (e.g. Expenses:Food).
+        """
         if not text:
             return ""
         text_lower = text.lower()
         keywords = {
-            "Expenses:Food": ["grocery", "tesco", "sainsbury", "asda", "lidl", "aldi", "food", "restaurant", "cafe"],
-            "Expenses:Transport": ["fuel", "petrol", "uber", "train", "bus", "parking", "transport"],
+            "Expenses:Food": [
+                "grocery",
+                "tesco",
+                "sainsbury",
+                "asda",
+                "lidl",
+                "aldi",
+                "food",
+                "restaurant",
+                "cafe",
+            ],
+            "Expenses:Transport": [
+                "fuel",
+                "petrol",
+                "uber",
+                "train",
+                "bus",
+                "parking",
+                "transport",
+            ],
             "Expenses:Entertainment": ["netflix", "spotify", "cinema", "theatre", "amazon prime"],
-            "Expenses:Utilities": ["electric", "gas", "water", "broadband", "internet", "phone", "mobile"],
+            "Expenses:Utilities": [
+                "electric",
+                "gas",
+                "water",
+                "broadband",
+                "internet",
+                "phone",
+                "mobile",
+            ],
         }
         heuristic = "Expenses:Miscellaneous"
         for category, kws in keywords.items():
@@ -283,7 +311,8 @@ class CategoryPredictor:
         self, sender: str, subject: str, body: str, account_paths: list[str] | None = None
     ) -> str:
         """Suggest a category from email sender, subject, and body (e.g. for UI hint).
-        If account_paths is provided, may return a leaf from that list under the heuristic category."""
+        If account_paths is provided, may return a leaf from that list under the heuristic category.
+        """
         text = f"{(sender or '')} {(subject or '')} {(body or '')}"
         return self._category_from_text(text, account_paths)
 
@@ -357,9 +386,7 @@ class CategoryPredictor:
             summary += f" (total £{receipt.parsed_total})"
         return summary
 
-    def describe_terse_items(
-        self, receipt: ReceiptEvidence
-    ) -> list[str]:
+    def describe_terse_items(self, receipt: ReceiptEvidence) -> list[str]:
         """Use LLM to expand terse/abbreviated receipt item names."""
         if (
             not self._llm_config
@@ -375,8 +402,7 @@ class CategoryPredictor:
                 return terse_names
             user_content = (
                 "Expand each receipt item name to a clear description. "
-                "Return a JSON array of strings, one per input item.\n\n"
-                + json.dumps(terse_names)
+                "Return a JSON array of strings, one per input item.\n\n" + json.dumps(terse_names)
             )
             logger.debug(
                 "LLM (receipt items) full request (%d chars):\n%s\n<<< END LLM REQUEST >>>",
@@ -390,12 +416,7 @@ class CategoryPredictor:
             )
             if not data:
                 return terse_names
-            content = (
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             logger.debug(
                 "LLM (receipt items) full response:\n%s\n<<< END LLM RESPONSE >>>",
                 _truncate_for_log(content),
@@ -438,12 +459,30 @@ class CategoryPredictor:
     _CONFIDENCE_THRESHOLD = 6
     # Non-GBP currency codes: paths containing any of these (as a segment or in parentheses in a segment) are excluded.
     _NON_GBP_CURRENCY_CODES = frozenset(
-        {"USD", "EUR", "JPY", "CHF", "AUD", "CAD", "CNY", "INR", "NZD", "ZAR", "SEK", "NOK", "DKK", "CZK", "THB", "RON"}
+        {
+            "USD",
+            "EUR",
+            "JPY",
+            "CHF",
+            "AUD",
+            "CAD",
+            "CNY",
+            "INR",
+            "NZD",
+            "ZAR",
+            "SEK",
+            "NOK",
+            "DKK",
+            "CZK",
+            "THB",
+            "RON",
+        }
     )
 
     @staticmethod
     def _filter_gbp_paths_only(paths: list[str]) -> list[str]:
         """Exclude paths that contain a non-GBP currency (e.g. segment EUR or segment 'Eat in (CZK)')."""
+
         def has_non_gbp(path: str) -> bool:
             for seg in path.split(":"):
                 if seg.upper() in CategoryPredictor._NON_GBP_CURRENCY_CODES:
@@ -490,7 +529,7 @@ class CategoryPredictor:
             if p == chosen:
                 continue
             if p.startswith(prefix):
-                suffixes.append(p[len(prefix):])
+                suffixes.append(p[len(prefix) :])
             else:
                 suffixes.append(p)
         if not suffixes:
@@ -565,7 +604,11 @@ class CategoryPredictor:
             return body
         body = body.strip()
         if amount is not None and amount == 0:
-            return body[: CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT] if len(body) > CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT else body
+            return (
+                body[: CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT]
+                if len(body) > CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT
+                else body
+            )
         patterns = [
             f"£{amount:.2f}",
             f"£{amount}",
@@ -589,7 +632,11 @@ class CategoryPredictor:
                 if end > last_end:
                     last_end = end
         if first_pos == -1:
-            return body[: CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT] if len(body) > CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT else body
+            return (
+                body[: CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT]
+                if len(body) > CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT
+                else body
+            )
         start = max(0, first_pos - CategoryPredictor._EMAIL_CONTEXT_CHARS_BEFORE_AMOUNT)
         return body[start:last_end] if last_end != -1 else body[start:]
 
@@ -601,7 +648,9 @@ class CategoryPredictor:
         contexts: list[tuple[EmailEvidence, str]] = []
         for em in emails_sorted[:3]:
             subject = (em.subject or "").strip()
-            body = (getattr(em, "filtered_body", None) or em.body_snippet or em.full_body or "").strip()
+            body = (
+                getattr(em, "filtered_body", None) or em.body_snippet or em.full_body or ""
+            ).strip()
             body_ctx = CategoryPredictor._extract_body_context_around_amount(body, amount)
             ctx_str = f"Subject: {subject}\nBody: {body_ctx}"
             contexts.append((em, ctx_str))
@@ -609,7 +658,10 @@ class CategoryPredictor:
         for em, ctx_str in contexts:
             is_dup = False
             for _, kept_ctx in kept:
-                if difflib.SequenceMatcher(None, ctx_str, kept_ctx).ratio() >= CategoryPredictor._EMAIL_DEDUPE_SIMILARITY_THRESHOLD:
+                if (
+                    difflib.SequenceMatcher(None, ctx_str, kept_ctx).ratio()
+                    >= CategoryPredictor._EMAIL_DEDUPE_SIMILARITY_THRESHOLD
+                ):
                     is_dup = True
                     break
             if not is_dup:
@@ -626,7 +678,9 @@ class CategoryPredictor:
         contexts: list[tuple[EmailEvidence, str]] = []
         for em in emails_sorted[:3]:
             subject = (em.subject or "").strip()
-            body = (getattr(em, "filtered_body", None) or em.body_snippet or em.full_body or "").strip()
+            body = (
+                getattr(em, "filtered_body", None) or em.body_snippet or em.full_body or ""
+            ).strip()
             body_ctx = CategoryPredictor._extract_body_context_around_amount(body, amount)
             ctx_str = f"Subject: {subject}\nBody: {body_ctx}"
             contexts.append((em, ctx_str))
@@ -634,7 +688,10 @@ class CategoryPredictor:
         for em, ctx_str in contexts:
             is_dup = False
             for _, kept_ctx in kept:
-                if difflib.SequenceMatcher(None, ctx_str, kept_ctx).ratio() >= CategoryPredictor._EMAIL_DEDUPE_SIMILARITY_THRESHOLD:
+                if (
+                    difflib.SequenceMatcher(None, ctx_str, kept_ctx).ratio()
+                    >= CategoryPredictor._EMAIL_DEDUPE_SIMILARITY_THRESHOLD
+                ):
                     is_dup = True
                     break
             if not is_dup:
@@ -657,7 +714,8 @@ class CategoryPredictor:
         then lines like '  Food:Groceries' meaning full path Expenses:Food:Groceries. Saves tokens.
         """
         allowed = [
-            p for p in paths
+            p
+            for p in paths
             if p in ("Expenses", "Income")
             or any(p.startswith(prefix) for prefix in CategoryPredictor._LLM_CATEGORY_PREFIXES)
         ]
@@ -672,7 +730,7 @@ class CategoryPredictor:
             else:
                 for prefix in CategoryPredictor._LLM_CATEGORY_PREFIXES:
                     if p.startswith(prefix):
-                        rest = p[len(prefix):].strip()
+                        rest = p[len(prefix) :].strip()
                         if rest:
                             by_prefix.setdefault(prefix, []).append(rest)
                         break
@@ -730,12 +788,7 @@ class CategoryPredictor:
             )
             if not data:
                 return None
-            raw = (
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
+            raw = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             logger.debug(
@@ -748,7 +801,9 @@ class CategoryPredictor:
             logger.warning("LLM query failed (%s)", label, exc_info=True)
             return None
 
-    def _llm_post_extraction_with_messages(self, messages: list[dict], max_tokens: int = 500) -> str | None:
+    def _llm_post_extraction_with_messages(
+        self, messages: list[dict], max_tokens: int = 500
+    ) -> str | None:
         """Send messages to the extraction LLM; return last assistant content or None."""
         endpoint = getattr(self._llm_config, "extraction_endpoint", "") or ""
         model = getattr(self._llm_config, "extraction_model", "") or ""
@@ -779,12 +834,7 @@ class CategoryPredictor:
             data = client.chat(messages=messages, max_tokens=max_tokens)
             if not data:
                 return None
-            raw = (
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
+            raw = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
             logger.debug(
                 "LLM (extraction) full response:\n%s\n<<< END LLM RESPONSE >>>",
                 _truncate_for_log(raw),
@@ -850,7 +900,9 @@ class CategoryPredictor:
             web_seller = self._web_search_short(seller, min_chars=50, max_chars=200)
             if web_seller:
                 data["seller_web_description"] = web_seller
-                logger.debug("Extraction LLM (use_web): seller web description %d chars", len(web_seller))
+                logger.debug(
+                    "Extraction LLM (use_web): seller web description %d chars", len(web_seller)
+                )
         for idx, it in enumerate(data.get("items") or []):
             if not isinstance(it, dict):
                 logger.debug(
@@ -881,13 +933,17 @@ class CategoryPredictor:
         data["items"] = items
         return data
 
-    def _query_llm_extract(self, emails_sorted: list[EmailEvidence], amount: Decimal) -> dict | None:
+    def _query_llm_extract(
+        self, emails_sorted: list[EmailEvidence], amount: Decimal
+    ) -> dict | None:
         """Per-email extraction in same session, then merge. When use_web, add 50-200 char web descriptions for seller and each item. Returns parsed dict or None."""
         email_contexts = self._email_contexts_for_llm(emails_sorted, amount)
         if not email_contexts:
             logger.debug("Extraction LLM: no email contexts")
             return None
-        logger.info("Extraction LLM: %d email(s), per-email extraction then merge", len(email_contexts))
+        logger.info(
+            "Extraction LLM: %d email(s), per-email extraction then merge", len(email_contexts)
+        )
         extract_tpl = load_template(self._prompts_dir, "extract_email")
         messages: list[dict] = []
         extraction_raws: list[str] = []
@@ -898,7 +954,13 @@ class CategoryPredictor:
                 else self._EXTRACT_JSON_INSTRUCTION_FALLBACK + ctx
             )
             messages.append({"role": "user", "content": user_content})
-            logger.debug("Extraction LLM: query %d/%d for email %d (%d chars)", i + 1, len(email_contexts), i + 1, len(ctx))
+            logger.debug(
+                "Extraction LLM: query %d/%d for email %d (%d chars)",
+                i + 1,
+                len(email_contexts),
+                i + 1,
+                len(ctx),
+            )
             raw = self._llm_post_extraction_with_messages(messages, max_tokens=500)
             if not raw:
                 logger.debug("Extraction LLM: no response for email %d", i + 1)
@@ -923,7 +985,9 @@ class CategoryPredictor:
                 "seller_name, items, order_ids, transaction_ids.\n\n" + extractions_blob
             )
             messages.append({"role": "user", "content": merge_prompt})
-            logger.debug("Extraction LLM: merge query with %d per-email results", len(extraction_raws))
+            logger.debug(
+                "Extraction LLM: merge query with %d per-email results", len(extraction_raws)
+            )
             raw_merge = self._llm_post_extraction_with_messages(messages, max_tokens=600)
             if not raw_merge:
                 logger.debug("Extraction LLM: no response for merge")
@@ -954,7 +1018,8 @@ class CategoryPredictor:
 
     def _query_llm_extract_from_description(self, tx: Transaction) -> dict | None:
         """Extract supplier and item(s) from transaction description when there are no emails.
-        Uses extraction LLM if configured, otherwise main LLM. When use_web is set, adds web descriptions for seller and items."""
+        Uses extraction LLM if configured, otherwise main LLM. When use_web is set, adds web descriptions for seller and items.
+        """
         desc = (tx.description or "").strip()
         if not desc:
             return None
@@ -967,8 +1032,12 @@ class CategoryPredictor:
             )
         )
         raw: str | None = None
-        if getattr(self._llm_config, "extraction_endpoint", "") and getattr(self._llm_config, "extraction_model", ""):
-            raw = self._llm_post_extraction_with_messages([{"role": "user", "content": prompt}], max_tokens=400)
+        if getattr(self._llm_config, "extraction_endpoint", "") and getattr(
+            self._llm_config, "extraction_model", ""
+        ):
+            raw = self._llm_post_extraction_with_messages(
+                [{"role": "user", "content": prompt}], max_tokens=400
+            )
         if not raw and self._llm_config.endpoint and self._llm_config.model_name:
             raw = self._llm_post(prompt, "extract from description", max_tokens=400)
         if not raw:
@@ -1050,7 +1119,9 @@ class CategoryPredictor:
         data = self._parse_llm_json(raw)
         if not data:
             return None
-        improved_description = (data.get("improved_description") or data.get("description") or tx.description or "").strip()
+        improved_description = (
+            data.get("improved_description") or data.get("description") or tx.description or ""
+        ).strip()
         if not improved_description:
             improved_description = tx.description or ""
         try:
@@ -1103,7 +1174,9 @@ class CategoryPredictor:
                 "Reply with only that category exactly as shown. One line, no JSON, no explanation.\n"
                 "Example reply: Household:Kitchen equipment & expendables"
             )
-            user_content = f"{desc_block}\n\n--- Categories ---\n{cats_block}\n\n--- Task ---\n{instruction}"
+            user_content = (
+                f"{desc_block}\n\n--- Categories ---\n{cats_block}\n\n--- Task ---\n{instruction}"
+            )
         raw = self._llm_post(user_content, "category step 2", max_tokens=150)
         if not raw:
             return None
@@ -1138,6 +1211,7 @@ class CategoryPredictor:
     ) -> dict | None:
         """Single path for extraction + category LLM. Returns dict with extraction, category, description, confidence (0-1), or None."""
         try:
+
             def _email_sort_key(e: EmailEvidence) -> datetime:
                 if isinstance(e.sent_at, datetime):
                     return e.sent_at
@@ -1145,7 +1219,8 @@ class CategoryPredictor:
 
             emails_sorted = sorted(emails[:3], key=_email_sort_key)
             allowed_paths = [
-                p for p in account_paths
+                p
+                for p in account_paths
                 if p in ("Expenses", "Income")
                 or any(p.startswith(prefix) for prefix in self._LLM_CATEGORY_PREFIXES)
             ]
@@ -1171,7 +1246,9 @@ class CategoryPredictor:
                 if extraction:
                     extracted_from_emails = self._format_extraction_for_prompt(extraction)
                     if extracted_from_emails:
-                        logger.debug("Using extraction from transaction description for category step (no-email flow)")
+                        logger.debug(
+                            "Using extraction from transaction description for category step (no-email flow)"
+                        )
             step1 = self._query_llm_step1(
                 tx,
                 expenses_first,
@@ -1191,7 +1268,11 @@ class CategoryPredictor:
                 llm_confidence = 0.0
 
             if not step1.get("confident", True):
-                final_category = chosen if chosen in allowed_paths else (allowed_paths[0] if allowed_paths else chosen)
+                final_category = (
+                    chosen
+                    if chosen in allowed_paths
+                    else (allowed_paths[0] if allowed_paths else chosen)
+                )
                 return {
                     "extraction": extraction,
                     "category": final_category,
@@ -1209,9 +1290,15 @@ class CategoryPredictor:
                 }
             final_category = step2.get("category") or chosen
             if "category" not in step2:
-                logger.warning("LLM step2 response missing 'category'; using step1 choice %s", final_category)
+                logger.warning(
+                    "LLM step2 response missing 'category'; using step1 choice %s", final_category
+                )
             if final_category not in allowed_paths:
-                final_category = chosen if chosen in allowed_paths else (allowed_paths[0] if allowed_paths else chosen)
+                final_category = (
+                    chosen
+                    if chosen in allowed_paths
+                    else (allowed_paths[0] if allowed_paths else chosen)
+                )
             logger.debug("LLM category full path after step 2: %s", final_category)
             return {
                 "extraction": extraction,
@@ -1274,7 +1361,9 @@ class FeedbackTrainer:
         feedback = {
             "proposal_id": proposal.proposal_id,
             "tx_id": proposal.tx_id,
-            "suggested_category": proposal.suggested_splits[0].account_path if proposal.suggested_splits else "",
+            "suggested_category": (
+                proposal.suggested_splits[0].account_path if proposal.suggested_splits else ""
+            ),
             "confidence": proposal.confidence,
             "accepted": accepted,
             "note": note,
@@ -1283,9 +1372,8 @@ class FeedbackTrainer:
 
         if self._state_dir:
             from gnc_enrich.state.repository import StateRepository
+
             repo = StateRepository(self._state_dir)
             repo.append_feedback(feedback)
 
-        logger.info(
-            "Feedback recorded: proposal=%s accepted=%s", proposal.proposal_id, accepted
-        )
+        logger.info("Feedback recorded: proposal=%s accepted=%s", proposal.proposal_id, accepted)

@@ -47,6 +47,7 @@ def _test_llm_connection(config_llm) -> bool:
 @dataclass(slots=True)
 class PipelineResult:
     """Summary of a pipeline run."""
+
     proposal_count: int
     skipped_count: int
 
@@ -63,7 +64,9 @@ class EnrichmentPipeline:
                 config.llm.model_name or "(none)",
             )
             if not _test_llm_connection(config.llm):
-                logger.warning("LLM connection test failed; pipeline will continue but LLM calls may fail")
+                logger.warning(
+                    "LLM connection test failed; pipeline will continue but LLM calls may fail"
+                )
             elif getattr(config.llm, "warmup_on_start", False):
                 # Optional warmup to keep the model \"primed\" and reduce first-call latency.
                 logger.info("Running LLM warmup at pipeline start")
@@ -71,7 +74,9 @@ class EnrichmentPipeline:
                     LlmClient(config.llm).warmup()
                 except Exception:
                     logger.warning("LLM warmup failed (non-fatal)", exc_info=True)
-            if getattr(config.llm, "extraction_endpoint", "") and getattr(config.llm, "extraction_model", ""):
+            if getattr(config.llm, "extraction_endpoint", "") and getattr(
+                config.llm, "extraction_model", ""
+            ):
                 logger.info(
                     "Extraction LLM enabled: endpoint=%s model=%s",
                     config.llm.extraction_endpoint,
@@ -85,7 +90,9 @@ class EnrichmentPipeline:
                     timeout_seconds=config.llm.timeout_seconds,
                 )
                 if not _test_llm_connection(extraction_cfg):
-                    logger.warning("Extraction LLM connection test failed; will use raw emails for categorisation")
+                    logger.warning(
+                        "Extraction LLM connection test failed; will use raw emails for categorisation"
+                    )
         else:
             logger.info("LLM disabled; using ML/heuristics and OCR only")
         proposals = self.build_proposals(config)
@@ -131,7 +138,10 @@ class EnrichmentPipeline:
             include_skipped=config.include_skipped,
             skipped_ids=skipped_ids,
         )
-        logger.info("Filtered to %d candidate transactions (Unspecified/Imbalance-GBP only)", len(candidates))
+        logger.info(
+            "Filtered to %d candidate transactions (Unspecified/Imbalance-GBP only)",
+            len(candidates),
+        )
 
         min_email_date = None
         if candidates and config.emails_dir.exists():
@@ -169,7 +179,11 @@ class EnrichmentPipeline:
             )
 
         receipt_repo = ReceiptRepository()
-        receipt_files = receipt_repo.list_unprocessed(config.receipts_dir) if config.receipts_dir.exists() else []
+        receipt_files = (
+            receipt_repo.list_unprocessed(config.receipts_dir)
+            if config.receipts_dir.exists()
+            else []
+        )
         ocr_engine = ReceiptOcrEngine(llm_config=config.llm)
 
         receipt_evidences: list[ReceiptEvidence] = []
@@ -204,7 +218,10 @@ class EnrichmentPipeline:
         for i, tx in enumerate(candidates, 1):
             logger.debug(
                 "Processing candidate %d/%d: tx=%s amount=£%s",
-                i, len(candidates), tx.tx_id, tx.amount,
+                i,
+                len(candidates),
+                tx.tx_id,
+                tx.amount,
             )
             matched_emails = email_matcher.match(tx)
             matched_receipt = receipt_matcher.match(tx)

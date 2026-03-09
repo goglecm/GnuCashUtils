@@ -261,7 +261,9 @@ class TestSystemPipeline:
         ]
         assert len(lines) >= 8
 
-    def test_pipeline_produces_proposals_for_all_candidates(self, system_env: dict[str, Path]) -> None:
+    def test_pipeline_produces_proposals_for_all_candidates(
+        self, system_env: dict[str, Path]
+    ) -> None:
         config = RunConfig(
             gnucash_path=system_env["gnucash_path"],
             emails_dir=system_env["emails_dir"],
@@ -367,21 +369,31 @@ class TestSystemReviewCycle:
 
         proposals = svc.all_proposals()
 
-        svc.submit_decision(ReviewDecision(
-            tx_id=proposals[0].tx_id, action="approve",
-            final_description=proposals[0].suggested_description,
-            final_splits=proposals[0].suggested_splits,
-        ))
-        svc.submit_decision(ReviewDecision(
-            tx_id=proposals[1].tx_id, action="skip",
-            final_description="", final_splits=[],
-            reviewer_note="Not sure about this one",
-        ))
-        svc.submit_decision(ReviewDecision(
-            tx_id=proposals[2].tx_id, action="edit",
-            final_description="BT Broadband March 2023",
-            final_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("54.00"))],
-        ))
+        svc.submit_decision(
+            ReviewDecision(
+                tx_id=proposals[0].tx_id,
+                action="approve",
+                final_description=proposals[0].suggested_description,
+                final_splits=proposals[0].suggested_splits,
+            )
+        )
+        svc.submit_decision(
+            ReviewDecision(
+                tx_id=proposals[1].tx_id,
+                action="skip",
+                final_description="",
+                final_splits=[],
+                reviewer_note="Not sure about this one",
+            )
+        )
+        svc.submit_decision(
+            ReviewDecision(
+                tx_id=proposals[2].tx_id,
+                action="edit",
+                final_description="BT Broadband March 2023",
+                final_splits=[Split(account_path="Expenses:Utilities", amount=Decimal("54.00"))],
+            )
+        )
 
         assert svc.decided_count == 3
         assert svc.pending_count == 1
@@ -398,11 +410,14 @@ class TestSystemReviewCycle:
         svc = ReviewQueueService(state)
         p = svc.all_proposals()[0]
 
-        svc.submit_decision(ReviewDecision(
-            tx_id=p.tx_id, action="approve",
-            final_description=p.suggested_description,
-            final_splits=p.suggested_splits,
-        ))
+        svc.submit_decision(
+            ReviewDecision(
+                tx_id=p.tx_id,
+                action="approve",
+                final_description=p.suggested_description,
+                final_splits=p.suggested_splits,
+            )
+        )
 
         feedback = state.load_feedback()
         assert len(feedback) >= 1
@@ -416,10 +431,14 @@ class TestSystemReviewCycle:
         svc = ReviewQueueService(state)
         p = svc.all_proposals()[0]
 
-        svc.submit_decision(ReviewDecision(
-            tx_id=p.tx_id, action="skip",
-            final_description="", final_splits=[],
-        ))
+        svc.submit_decision(
+            ReviewDecision(
+                tx_id=p.tx_id,
+                action="skip",
+                final_description="",
+                final_splits=[],
+            )
+        )
 
         config = RunConfig(
             gnucash_path=system_env["gnucash_path"],
@@ -449,11 +468,14 @@ class TestSystemApply:
         state = StateRepository(env["state_dir"])
         svc = ReviewQueueService(state)
         for p in svc.all_proposals():
-            svc.submit_decision(ReviewDecision(
-                tx_id=p.tx_id, action="approve",
-                final_description=p.suggested_description,
-                final_splits=p.suggested_splits,
-            ))
+            svc.submit_decision(
+                ReviewDecision(
+                    tx_id=p.tx_id,
+                    action="approve",
+                    final_description=p.suggested_description,
+                    final_splits=p.suggested_splits,
+                )
+            )
 
     def test_dry_run_report(self, system_env: dict[str, Path]) -> None:
         self._run_and_approve_all(system_env)
@@ -517,6 +539,7 @@ class TestSystemWebApp:
         svc = ReviewQueueService(state)
 
         from gnc_enrich.review.webapp import create_app
+
         app = create_app(svc)
         client = app.test_client()
 
@@ -533,6 +556,7 @@ class TestSystemWebApp:
         svc = ReviewQueueService(state)
 
         from gnc_enrich.review.webapp import create_app
+
         app = create_app(svc)
         client = app.test_client()
 
@@ -550,6 +574,7 @@ class TestSystemWebApp:
         svc = ReviewQueueService(state)
 
         from gnc_enrich.review.webapp import create_app
+
         app = create_app(svc)
         client = app.test_client()
 
@@ -575,13 +600,17 @@ class TestSystemWebApp:
         svc = ReviewQueueService(state)
 
         for p in svc.all_proposals():
-            svc.submit_decision(ReviewDecision(
-                tx_id=p.tx_id, action="approve",
-                final_description=p.suggested_description,
-                final_splits=p.suggested_splits,
-            ))
+            svc.submit_decision(
+                ReviewDecision(
+                    tx_id=p.tx_id,
+                    action="approve",
+                    final_description=p.suggested_description,
+                    final_splits=p.suggested_splits,
+                )
+            )
 
         from gnc_enrich.review.webapp import create_app
+
         app = create_app(svc)
         client = app.test_client()
 

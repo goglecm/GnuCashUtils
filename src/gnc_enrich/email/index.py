@@ -89,7 +89,10 @@ class EmailIndexRepository:
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 self._indexed_files = set(manifest.get("indexed_files", []))
             except json.JSONDecodeError:
-                logger.warning("Corrupt email index manifest %s; starting with empty indexed set", manifest_path)
+                logger.warning(
+                    "Corrupt email index manifest %s; starting with empty indexed set",
+                    manifest_path,
+                )
 
         if index_path.exists():
             for lineno, line in enumerate(index_path.read_text(encoding="utf-8").splitlines(), 1):
@@ -153,11 +156,12 @@ class EmailIndexRepository:
                 except Exception:
                     logger.warning("Failed to parse %s, skipping", eml_path, exc_info=True)
 
-        manifest_data = {"_schema_version": _SCHEMA_VERSION, "indexed_files": sorted(self._indexed_files)}
+        manifest_data = {
+            "_schema_version": _SCHEMA_VERSION,
+            "indexed_files": sorted(self._indexed_files),
+        }
         manifest_path.write_text(json.dumps(manifest_data, indent=2), encoding="utf-8")
-        logger.info(
-            "Email index: %d total entries (%d new)", len(self._entries), new_count
-        )
+        logger.info("Email index: %d total entries (%d new)", len(self._entries), new_count)
 
     def search(
         self,

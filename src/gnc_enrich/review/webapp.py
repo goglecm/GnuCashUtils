@@ -53,7 +53,9 @@ def create_app(service: ReviewQueueService) -> Flask:
     def index():
         proposal = service.next_proposal()
         if proposal is None:
-            return render_template("done.html", total=service.total_count, decided=service.decided_count, pending=0)
+            return render_template(
+                "done.html", total=service.total_count, decided=service.decided_count, pending=0
+            )
         return redirect(url_for("review", proposal_id=proposal.proposal_id))
 
     @app.route("/review/<proposal_id>")
@@ -75,15 +77,21 @@ def create_app(service: ReviewQueueService) -> Flask:
                     proposal.evidence.emails, amount
                 )
                 email_category_hints = [
-                    service.get_email_category_hint(em.sender, em.subject, display_ctx, account_paths)
+                    service.get_email_category_hint(
+                        em.sender, em.subject, display_ctx, account_paths
+                    )
                     for em, display_ctx in emails_for_display
                 ]
             except Exception:
-                logger.warning("Failed to build emails for display for proposal %s", proposal_id, exc_info=True)
+                logger.warning(
+                    "Failed to build emails for display for proposal %s", proposal_id, exc_info=True
+                )
         has_description = bool(proposal.original_description)
         has_emails = bool(emails_for_display)
         has_receipt = bool(proposal.evidence and proposal.evidence.receipt)
-        show_llm_button = (not decided) and service.llm_enabled and (has_description or has_emails or has_receipt)
+        show_llm_button = (
+            (not decided) and service.llm_enabled and (has_description or has_emails or has_receipt)
+        )
         return render_template(
             "review.html",
             proposal=proposal,
@@ -160,7 +168,8 @@ def create_app(service: ReviewQueueService) -> Flask:
     @app.route("/review/<proposal_id>/llm-check", methods=["POST"])
     def llm_check(proposal_id: str):
         """Run extraction + category LLM for this proposal; return JSON result.
-        Request body may include selected_email_ids: list of evidence_id to use (only ticked emails)."""
+        Request body may include selected_email_ids: list of evidence_id to use (only ticked emails).
+        """
         proposal = service.get_proposal(proposal_id)
         if proposal is None:
             return jsonify({"ok": False, "error": "Proposal not found"}), 404
@@ -183,13 +192,15 @@ def create_app(service: ReviewQueueService) -> Flask:
             except Exception:
                 logger.warning("Failed to serialize extraction for JSON", exc_info=True)
                 extraction = None
-        return jsonify({
-            "ok": True,
-            "extraction": extraction,
-            "category": result.get("category", ""),
-            "description": result.get("description", ""),
-            "confidence": result.get("confidence", 0.0),
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "extraction": extraction,
+                "category": result.get("category", ""),
+                "description": result.get("description", ""),
+                "confidence": result.get("confidence", 0.0),
+            }
+        )
 
     @app.route("/queue")
     def queue():

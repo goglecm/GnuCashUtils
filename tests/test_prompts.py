@@ -46,4 +46,3 @@ def test_render_replaces_placeholders_and_coerces_values() -> None:
     template = "A={{a}} B={{b}} C={{c}}"
     out = render(template, a="one", b=2, c=None)
     assert out == "A=one B=2 C="
-

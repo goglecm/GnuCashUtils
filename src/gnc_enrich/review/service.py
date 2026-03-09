@@ -9,7 +9,14 @@ from decimal import Decimal
 from pathlib import Path
 
 from gnc_enrich.config import LlmConfig, LlmMode
-from gnc_enrich.domain.models import EmailEvidence, Proposal, ReceiptEvidence, ReviewDecision, SkipRecord, Transaction
+from gnc_enrich.domain.models import (
+    EmailEvidence,
+    Proposal,
+    ReceiptEvidence,
+    ReviewDecision,
+    SkipRecord,
+    Transaction,
+)
 from gnc_enrich.ml.predictor import CategoryPredictor, FeedbackTrainer
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.state.repository import StateRepository
@@ -167,7 +174,8 @@ class ReviewQueueService:
         """Run extraction + category LLM for this proposal; update and persist proposal; return result dict or None.
         If selected_email_ids is provided, only those emails are used for the LLM; otherwise all matched emails are used.
         Works with or without evidence: with emails uses per-email extraction then merge; without emails
-        uses extraction (or main) LLM on the transaction description to infer supplier/items, then category steps."""
+        uses extraction (or main) LLM on the transaction description to infer supplier/items, then category steps.
+        """
         try:
             proposal = self.get_proposal(proposal_id)
             if not proposal:
@@ -241,7 +249,11 @@ class ReviewQueueService:
             try:
                 decision = self._enrich_from_approved_evidence(decision)
             except Exception:
-                logger.warning("Evidence enrichment failed for tx %s; saving un-enriched decision", decision.tx_id, exc_info=True)
+                logger.warning(
+                    "Evidence enrichment failed for tx %s; saving un-enriched decision",
+                    decision.tx_id,
+                    exc_info=True,
+                )
 
         self._state.save_decision(decision)
         self._decided_ids.add(decision.tx_id)
@@ -255,11 +267,13 @@ class ReviewQueueService:
             )
 
         if decision.action == "skip":
-            self._state.save_skip(SkipRecord(
-                tx_id=decision.tx_id,
-                reason=decision.reviewer_note or "Skipped during review",
-                skipped_at=datetime.now(timezone.utc),
-            ))
+            self._state.save_skip(
+                SkipRecord(
+                    tx_id=decision.tx_id,
+                    reason=decision.reviewer_note or "Skipped during review",
+                    skipped_at=datetime.now(timezone.utc),
+                )
+            )
 
         logger.info("Decision recorded: tx=%s action=%s", decision.tx_id, decision.action)
 
@@ -288,6 +302,7 @@ class ReviewQueueService:
 
         if approved_receipt and approved_receipt.line_items:
             from copy import deepcopy
+
             approved_receipt = deepcopy(approved_receipt)
             expanded = predictor.describe_terse_items(approved_receipt)
             if expanded != [it.description for it in approved_receipt.line_items]:

@@ -239,9 +239,7 @@ class StateRepository:
             "schema_version": _SCHEMA_VERSION,
             "proposals": [_serialize(p) for p in proposals],
         }
-        self._proposals_path.write_text(
-            json.dumps(data, cls=_Encoder, indent=2), encoding="utf-8"
-        )
+        self._proposals_path.write_text(json.dumps(data, cls=_Encoder, indent=2), encoding="utf-8")
 
     def load_proposals(self) -> list[Proposal]:
         if not self._proposals_path.exists():
@@ -280,7 +278,9 @@ class StateRepository:
         if not self._decisions_path.exists():
             return []
         results: list[ReviewDecision] = []
-        for lineno, line in enumerate(self._decisions_path.read_text(encoding="utf-8").splitlines(), 1):
+        for lineno, line in enumerate(
+            self._decisions_path.read_text(encoding="utf-8").splitlines(), 1
+        ):
             if not line.strip():
                 continue
             try:
@@ -293,7 +293,9 @@ class StateRepository:
             try:
                 results.append(_parse_decision(d))
             except (KeyError, TypeError, ValueError):
-                logger.warning("Skipping invalid decision at line %d in %s", lineno, self._decisions_path)
+                logger.warning(
+                    "Skipping invalid decision at line %d in %s", lineno, self._decisions_path
+                )
                 continue
         return results
 
@@ -308,9 +310,7 @@ class StateRepository:
             "schema_version": _SCHEMA_VERSION,
             "skips": [_serialize(s) for s in skips],
         }
-        self._skips_path.write_text(
-            json.dumps(data, cls=_Encoder, indent=2), encoding="utf-8"
-        )
+        self._skips_path.write_text(json.dumps(data, cls=_Encoder, indent=2), encoding="utf-8")
 
     def _load_skip_records(self) -> list[SkipRecord]:
         if not self._skips_path.exists():
@@ -363,20 +363,24 @@ class StateRepository:
             if "_schema_version" in d:
                 continue
             try:
-                results.append(AuditEntry(
-                    entry_id=d["entry_id"],
-                    tx_id=d["tx_id"],
-                    action=d["action"],
-                    proposed_description=d["proposed_description"],
-                    proposed_splits=[_parse_split(s) for s in d["proposed_splits"]],
-                    final_description=d["final_description"],
-                    final_splits=[_parse_split(s) for s in d["final_splits"]],
-                    confidence=float(d["confidence"]),
-                    evidence_ids=d.get("evidence_ids", []),
-                    timestamp=_parse_datetime(d.get("timestamp")),
-                ))
+                results.append(
+                    AuditEntry(
+                        entry_id=d["entry_id"],
+                        tx_id=d["tx_id"],
+                        action=d["action"],
+                        proposed_description=d["proposed_description"],
+                        proposed_splits=[_parse_split(s) for s in d["proposed_splits"]],
+                        final_description=d["final_description"],
+                        final_splits=[_parse_split(s) for s in d["final_splits"]],
+                        confidence=float(d["confidence"]),
+                        evidence_ids=d.get("evidence_ids", []),
+                        timestamp=_parse_datetime(d.get("timestamp")),
+                    )
+                )
             except (KeyError, TypeError, ValueError):
-                logger.warning("Skipping invalid audit entry at line %d in %s", lineno, self._audit_path)
+                logger.warning(
+                    "Skipping invalid audit entry at line %d in %s", lineno, self._audit_path
+                )
                 continue
         return results
 
@@ -393,7 +397,9 @@ class StateRepository:
         if not self._feedback_path.exists():
             return []
         results = []
-        for lineno, line in enumerate(self._feedback_path.read_text(encoding="utf-8").splitlines(), 1):
+        for lineno, line in enumerate(
+            self._feedback_path.read_text(encoding="utf-8").splitlines(), 1
+        ):
             if not line.strip():
                 continue
             try:

@@ -38,29 +38,36 @@ def receipt_dir(tmp_path: Path) -> Path:
 @pytest.fixture()
 def simple_receipt(receipt_dir: Path) -> Path:
     path = receipt_dir / "receipt1.jpg"
-    _make_receipt_image(path, [
-        "TESCO EXPRESS",
-        "Milk        1.50",
-        "Bread       2.00",
-        "Total:      3.50",
-    ])
+    _make_receipt_image(
+        path,
+        [
+            "TESCO EXPRESS",
+            "Milk        1.50",
+            "Bread       2.00",
+            "Total:      3.50",
+        ],
+    )
     return path
 
 
 @pytest.fixture()
 def multi_item_receipt(receipt_dir: Path) -> Path:
     path = receipt_dir / "receipt2.jpg"
-    _make_receipt_image(path, [
-        "SAINSBURYS LOCAL",
-        "Apples      2.50",
-        "Cheese      3.00",
-        "Water       0.80",
-        "Total:      6.30",
-    ])
+    _make_receipt_image(
+        path,
+        [
+            "SAINSBURYS LOCAL",
+            "Apples      2.50",
+            "Cheese      3.00",
+            "Water       0.80",
+            "Total:      6.30",
+        ],
+    )
     return path
 
 
 # -- internal helpers ---------------------------------------------------------
+
 
 class TestExtractTotal:
 
@@ -95,6 +102,7 @@ class TestExtractLineItems:
 
 
 # -- OCR engine ---------------------------------------------------------------
+
 
 class TestReceiptOcrEngine:
 
@@ -142,7 +150,9 @@ class TestReceiptOcrEngine:
 
 class TestReceiptOcrEngineLlmFallback:
 
-    def test_llm_fallback_updates_total_and_items(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_llm_fallback_updates_total_and_items(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         """LLM fallback populates total and line items when Tesseract finds none."""
         from gnc_enrich.config import LlmConfig, LlmMode
         from gnc_enrich.domain.models import ReceiptEvidence
@@ -197,7 +207,9 @@ class TestReceiptOcrEngineLlmFallback:
         assert updated.line_items
         assert any(it.description == "Bike light" for it in updated.line_items)
 
-    def test_llm_fallback_swallows_errors(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_llm_fallback_swallows_errors(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         """LLM fallback logs and returns original evidence when the API call fails."""
         from gnc_enrich.config import LlmConfig, LlmMode
         from gnc_enrich.domain.models import ReceiptEvidence
@@ -244,6 +256,7 @@ class TestReceiptOcrEngineLlmFallback:
 
 # -- Receipt repository -------------------------------------------------------
 
+
 class TestReceiptRepository:
 
     def test_list_unprocessed(self, receipt_dir: Path, simple_receipt: Path) -> None:
@@ -270,9 +283,7 @@ class TestReceiptRepository:
         assert not simple_receipt.exists()
         assert dest.parent == processed
 
-    def test_mark_processed_conflict_naming(
-        self, receipt_dir: Path, tmp_path: Path
-    ) -> None:
+    def test_mark_processed_conflict_naming(self, receipt_dir: Path, tmp_path: Path) -> None:
         processed = tmp_path / "done"
         processed.mkdir()
 

@@ -110,9 +110,7 @@ class ApplyEngine:
         proposal_map = {p.tx_id: p for p in proposals}
 
         approved_decisions: dict[str, ReviewDecision] = {
-            tx_id: dec
-            for tx_id, dec in decision_map.items()
-            if dec.action in ("approve", "edit")
+            tx_id: dec for tx_id, dec in decision_map.items() if dec.action in ("approve", "edit")
         }
 
         if not approved_decisions:
@@ -153,39 +151,39 @@ class ApplyEngine:
             if prop:
                 original_desc = prop.original_description or prop.suggested_description
 
-            journal.append({
-                "tx_id": tx_id,
-                "original_description": original_desc,
-                "new_description": dec.final_description,
-                "action": dec.action,
-                "backup_path": str(backup_path) if backup_path else "",
-            })
+            journal.append(
+                {
+                    "tx_id": tx_id,
+                    "original_description": original_desc,
+                    "new_description": dec.final_description,
+                    "action": dec.action,
+                    "backup_path": str(backup_path) if backup_path else "",
+                }
+            )
 
-            state.append_audit(AuditEntry(
-                entry_id=uuid.uuid4().hex[:12],
-                tx_id=tx_id,
-                action=dec.action,
-                proposed_description=prop.suggested_description if prop else "",
-                proposed_splits=prop.suggested_splits if prop else [],
-                final_description=dec.final_description,
-                final_splits=dec.final_splits,
-                confidence=prop.confidence if prop else 0.0,
-                evidence_ids=self._collect_evidence_ids(prop),
-                timestamp=datetime.now(timezone.utc),
-            ))
+            state.append_audit(
+                AuditEntry(
+                    entry_id=uuid.uuid4().hex[:12],
+                    tx_id=tx_id,
+                    action=dec.action,
+                    proposed_description=prop.suggested_description if prop else "",
+                    proposed_splits=prop.suggested_splits if prop else [],
+                    final_description=dec.final_description,
+                    final_splits=dec.final_splits,
+                    confidence=prop.confidence if prop else 0.0,
+                    evidence_ids=self._collect_evidence_ids(prop),
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
 
         writer.write_changes(gnucash_path, tree, changes, in_place=in_place)
 
         if processed_receipts_dir:
-            self._move_compatible_receipts(
-                proposals, approved_decisions, processed_receipts_dir
-            )
+            self._move_compatible_receipts(proposals, approved_decisions, processed_receipts_dir)
 
         journal_path = state_dir / "apply_journal.jsonl"
         if not journal_path.exists() or journal_path.stat().st_size == 0:
-            journal_path.write_text(
-                json.dumps({"_schema_version": 1}) + "\n", encoding="utf-8"
-            )
+            journal_path.write_text(json.dumps({"_schema_version": 1}) + "\n", encoding="utf-8")
         with journal_path.open("a", encoding="utf-8") as f:
             for entry in journal:
                 f.write(json.dumps(entry) + "\n")
@@ -194,9 +192,7 @@ class ApplyEngine:
         if create_backup and backup_retention is not None and backup_retention > 0:
             self._prune_backups(gnucash_path, resolved_backup_dir, backup_retention)
 
-        logger.info(
-            "Applied %d changes; journal at %s", len(approved_decisions), journal_path
-        )
+        logger.info("Applied %d changes; journal at %s", len(approved_decisions), journal_path)
 
     def rollback(self, state_dir: Path, backup_name: str | None = None) -> None:
         """Restore the GnuCash file from a backup.
@@ -228,6 +224,7 @@ class ApplyEngine:
             chosen = backups[-1]
 
         import shutil
+
         shutil.copy2(chosen, gnucash_path)
         logger.info("Rolled back %s from backup %s", gnucash_path, chosen)
 
@@ -279,9 +276,7 @@ class ApplyEngine:
                 continue
 
             dec = approved_decisions[prop.tx_id]
-            tx_amount = sum(
-                sp.amount for sp in dec.final_splits if sp.amount > 0
-            ) or Decimal(0)
+            tx_amount = sum(sp.amount for sp in dec.final_splits if sp.amount > 0) or Decimal(0)
 
             if abs(receipt.parsed_total - tx_amount) <= tol:
                 receipt_repo.mark_processed(receipt_path, processed_dir)

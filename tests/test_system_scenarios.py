@@ -27,7 +27,7 @@ def _make_gnucash_gz(path: Path, xml: str) -> None:
 
 def _make_eml(path: Path, *, subject: str, sender: str, body: str, date: str) -> None:
     path.write_text(
-        f"Content-Type: text/plain; charset=\"utf-8\"\n"
+        f'Content-Type: text/plain; charset="utf-8"\n'
         f"Date: {date}\n"
         f"From: {sender}\n"
         f"To: user@example.com\n"
@@ -132,8 +132,11 @@ class TestImbalanceOnlyScenario:
         processed.mkdir()
 
         config = RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=receipts,
-            processed_receipts_dir=processed, state_dir=state,
+            gnucash_path=gnc,
+            emails_dir=emails,
+            receipts_dir=receipts,
+            processed_receipts_dir=processed,
+            state_dir=state,
         )
         result = EnrichmentPipeline().run(config)
         assert result.proposal_count == 2
@@ -151,19 +154,25 @@ class TestImbalanceOnlyScenario:
         processed.mkdir()
 
         config = RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=receipts,
-            processed_receipts_dir=processed, state_dir=state,
+            gnucash_path=gnc,
+            emails_dir=emails,
+            receipts_dir=receipts,
+            processed_receipts_dir=processed,
+            state_dir=state,
         )
         EnrichmentPipeline().run(config)
 
         st = StateRepository(state)
         svc = ReviewQueueService(st)
         for p in svc.all_proposals():
-            svc.submit_decision(ReviewDecision(
-                tx_id=p.tx_id, action="approve",
-                final_description=p.suggested_description,
-                final_splits=p.suggested_splits,
-            ))
+            svc.submit_decision(
+                ReviewDecision(
+                    tx_id=p.tx_id,
+                    action="approve",
+                    final_description=p.suggested_description,
+                    final_splits=p.suggested_splits,
+                )
+            )
 
         engine = ApplyEngine()
         engine.apply(state)
@@ -245,11 +254,15 @@ class TestZeroCandidatesScenario:
         (tmp_path / "receipts").mkdir()
         (tmp_path / "processed").mkdir()
 
-        result = EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=tmp_path / "emails",
-            receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state,
-        ))
+        result = EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=tmp_path / "emails",
+                receipts_dir=tmp_path / "receipts",
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state,
+            )
+        )
         assert result.proposal_count == 0
 
     def test_review_queue_empty(self, tmp_path: Path) -> None:
@@ -261,11 +274,15 @@ class TestZeroCandidatesScenario:
         (tmp_path / "receipts").mkdir()
         (tmp_path / "processed").mkdir()
 
-        EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=tmp_path / "emails",
-            receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state,
-        ))
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=tmp_path / "emails",
+                receipts_dir=tmp_path / "receipts",
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state,
+            )
+        )
         svc = ReviewQueueService(StateRepository(state))
         assert svc.total_count == 0
         assert svc.next_proposal() is None
@@ -349,8 +366,11 @@ class TestDateWindowScenario:
         (tmp_path / "processed").mkdir()
 
         config_narrow = RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state,
+            gnucash_path=gnc,
+            emails_dir=emails,
+            receipts_dir=tmp_path / "receipts",
+            processed_receipts_dir=tmp_path / "processed",
+            state_dir=state,
             date_window_days=3,
         )
         EnrichmentPipeline().run(config_narrow)
@@ -361,8 +381,11 @@ class TestDateWindowScenario:
         state2 = tmp_path / "state2"
         state2.mkdir()
         config_wide = RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state2,
+            gnucash_path=gnc,
+            emails_dir=emails,
+            receipts_dir=tmp_path / "receipts",
+            processed_receipts_dir=tmp_path / "processed",
+            state_dir=state2,
             date_window_days=30,
         )
         EnrichmentPipeline().run(config_wide)
@@ -389,19 +412,29 @@ class TestDateWindowScenario:
 
         state_tight = tmp_path / "state_tight"
         state_tight.mkdir()
-        EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state_tight,
-            amount_tolerance=0.10,
-        ))
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=emails,
+                receipts_dir=tmp_path / "receipts",
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state_tight,
+                amount_tolerance=0.10,
+            )
+        )
 
         state_loose = tmp_path / "state_loose"
         state_loose.mkdir()
-        EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state_loose,
-            amount_tolerance=2.00,
-        ))
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=emails,
+                receipts_dir=tmp_path / "receipts",
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state_loose,
+                amount_tolerance=2.00,
+            )
+        )
 
         props_tight = StateRepository(state_tight).load_proposals()
         props_loose = StateRepository(state_loose).load_proposals()
@@ -431,10 +464,15 @@ class TestMultipleReceiptsScenario:
         _make_receipt(receipts / "close_total.jpg", ["WATER CO", "Total: 38.50"])
         _make_receipt(receipts / "another_wrong.png", ["CAFE B", "Total: 5.50"])
 
-        result = EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=receipts,
-            processed_receipts_dir=tmp_path / "processed", state_dir=state,
-        ))
+        result = EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=emails,
+                receipts_dir=receipts,
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state,
+            )
+        )
         assert result.proposal_count == 1
 
         st = StateRepository(state)
@@ -472,12 +510,18 @@ class TestDeepNestedEmailDirs:
         (tmp_path / "receipts").mkdir()
         (tmp_path / "processed").mkdir()
 
-        EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=emails, receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state,
-        ))
+        EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=emails,
+                receipts_dir=tmp_path / "receipts",
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state,
+            )
+        )
 
         from gnc_enrich.email.index import EmailIndexRepository
+
         index = EmailIndexRepository()
         index.build_or_load(emails, state)
         assert len(index.entries) == 2
@@ -525,11 +569,15 @@ class TestEmptyBookScenario:
         (tmp_path / "receipts").mkdir()
         (tmp_path / "processed").mkdir()
 
-        result = EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=tmp_path / "emails",
-            receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state,
-        ))
+        result = EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=tmp_path / "emails",
+                receipts_dir=tmp_path / "receipts",
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state,
+            )
+        )
         assert result.proposal_count == 0
         assert result.skipped_count == 0
 
@@ -646,11 +694,15 @@ class TestRealisticFormatScenario:
         (tmp_path / "receipts").mkdir()
         (tmp_path / "processed").mkdir()
 
-        result = EnrichmentPipeline().run(RunConfig(
-            gnucash_path=gnc, emails_dir=tmp_path / "emails",
-            receipts_dir=tmp_path / "receipts",
-            processed_receipts_dir=tmp_path / "processed", state_dir=state,
-        ))
+        result = EnrichmentPipeline().run(
+            RunConfig(
+                gnucash_path=gnc,
+                emails_dir=tmp_path / "emails",
+                receipts_dir=tmp_path / "receipts",
+                processed_receipts_dir=tmp_path / "processed",
+                state_dir=state,
+            )
+        )
         assert result.proposal_count == 1
 
     def test_loader_reads_slots_without_crashing(self, tmp_path: Path) -> None:

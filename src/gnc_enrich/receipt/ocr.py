@@ -35,6 +35,7 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif"}
 def _open_image(path: Path) -> Image.Image:
     if path.suffix.lower() in _HEIC_EXTENSIONS:
         import pillow_heif
+
         heif_file = pillow_heif.open_heif(str(path))
         return heif_file.to_pillow()
     return Image.open(path)
@@ -113,9 +114,7 @@ class ReceiptOcrEngine:
 
         return evidence
 
-    def _try_llm_fallback(
-        self, evidence: ReceiptEvidence, receipt_path: Path
-    ) -> ReceiptEvidence:
+    def _try_llm_fallback(self, evidence: ReceiptEvidence, receipt_path: Path) -> ReceiptEvidence:
         """Attempt LLM-based extraction when Tesseract fails to find a total."""
         logger.info("Tesseract found no total; attempting LLM fallback for %s", receipt_path)
         try:
@@ -142,11 +141,7 @@ class ReceiptOcrEngine:
                 return evidence
             # For backwards compatibility with existing tests/spec, assume an
             # OpenAI-style response shape and extract the message content.
-            msg_text = (
-                resp_data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
+            msg_text = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
             if not msg_text:
                 return evidence
             data = json.loads(msg_text)

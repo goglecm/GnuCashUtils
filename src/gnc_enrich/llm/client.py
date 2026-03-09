@@ -129,4 +129,3 @@ class LlmClient:
         except Exception:
             # chat() already logs; this is extra protection against unexpected errors
             logger.warning("LLM warmup failed", exc_info=True)
-
