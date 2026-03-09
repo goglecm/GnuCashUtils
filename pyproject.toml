@@ -34,10 +34,13 @@ gnc_enrich = ["prompts/*.txt"]
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-cov",
     "ruff",
     "black",
     "mypy",
     "pre-commit",
+    "bandit",
+    "pip-audit",
 ]
 web = ["ddgs"]
 

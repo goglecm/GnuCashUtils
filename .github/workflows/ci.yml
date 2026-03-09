@@ -38,6 +38,12 @@ jobs:
       - name: Run mypy
         run: python -m mypy src/gnc_enrich
 
+      - name: Run bandit (security scan)
+        run: bandit -r src/gnc_enrich -q || true
+
+      - name: Run pip-audit (dependency vulnerability scan)
+        run: pip-audit || true
+
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest --cov=src/gnc_enrich --cov-report=term-missing -q
 
