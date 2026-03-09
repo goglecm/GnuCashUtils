@@ -375,7 +375,13 @@ python -m gnc_enrich run --llm-mode offline --llm-endpoint http://localhost:1143
 python -m gnc_enrich run --llm-mode offline ... --llm-extraction-endpoint http://localhost:11434/v1/chat/completions --llm-extraction-model llama3 --llm-use-web ...
 ```
 
-At pipeline start, INFO logs indicate LLM config; when enabled, a **connection test** runs (`LLM connection OK` or a warning). LLM configuration is persisted in run metadata and loaded automatically during review.
+At pipeline start, INFO logs indicate LLM config; when enabled, a **connection test** runs (`LLM connection OK` or a warning). Optional **`--llm-warmup-on-start`** sends a tiny prompt at run start to warm the backend; this flag is persisted in run metadata. All LLM HTTP calls go through **`llm/client.py`** (LlmClient), which centralises timeouts, retries, and connection reuse. LLM configuration is persisted in run metadata and loaded automatically during review.
+
+### Security and resource usage
+
+- **Secrets**: The state directory stores `run_config.json`, which may contain LLM API keys in plain text. Restrict filesystem access to the state directory; see README “Security and privacy”.
+- **Logging**: DEBUG logs truncate LLM request/response snippets to 200 characters to limit PII exposure; seller/item names in use_web logs are already truncated. Do not enable DEBUG when log output is untrusted.
+- **LlmClient**: Each client holds an HTTP session. Long-running processes that create many clients (e.g. the review server handling repeated “Check with LLM” requests) should call **`close()`** when done or use **`with LlmClient(config) as client:`** to avoid leaving connections open.
 
 ---
 

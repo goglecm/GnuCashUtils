@@ -12,6 +12,8 @@ The system must:
 - Allow user override for categories, split structure, and description.
 - Skip non-GBP and future transactions.
 
+**Goals.** The project treats **security**, **memory usage**, and **performance** as first-class goals alongside correctness and usability. Details and design constraints are in **§11**.
+
 ---
 
 ## 2. Scope
@@ -235,7 +237,7 @@ If a template file is missing from both locations, the code falls back to the bu
 
 **Config and state**
 
-- **Run metadata** (`run_config`): Persisted after each run. Holds gnucash path, evidence dirs, **llm_mode**, **llm_endpoint**, **llm_model**, **llm_use_web**, **llm_extraction_endpoint**, **llm_extraction_model**, **llm_extraction_api_key** (when set). Review loads this to build **LlmConfig** for run_llm_check and for evidence enrichment (e.g. describe_terse_items).
+- **Run metadata** (`run_config`): Persisted after each run. Holds gnucash path, evidence dirs, **llm_mode**, **llm_endpoint**, **llm_model**, **llm_use_web**, **llm_warmup_on_start**, **llm_extraction_endpoint**, **llm_extraction_model**, **llm_extraction_api_key** (when set). Review loads this to build **LlmConfig** for run_llm_check and for evidence enrichment (e.g. describe_terse_items).
 - **Proposal state**: Proposals may store **llm_confidence**, **llm_category**, **llm_description**, **extraction_result**. On load, the **items** array in **extraction_result** is sanitized to dict-only entries.
 
 **Consistency with §6.2**
@@ -365,7 +367,24 @@ For every candidate and final action, capture:
 
 ---
 
-## 11. Performance & Capacity Targets
+## 11. Performance, memory, and security
+
+The following non-functional goals apply across the system; implementation notes are in the developers guide and README where relevant.
+
+### 11.1 Security
+
+- **Secrets**: API keys (e.g. LLM) may be stored in run metadata under the state directory. The state directory must be treated as sensitive; restrict filesystem access (e.g. permissions) so only trusted users can read it.
+- **Logging**: At INFO level, only sizes and timings are logged. DEBUG logging may include truncated transaction text, email snippets, and LLM I/O; it must not log secrets. DEBUG should not be enabled when log output is untrusted or shared.
+- **Review app**: Intended for local use (e.g. `127.0.0.1`). Do not expose the review server to untrusted networks without authentication.
+- **Inputs**: File paths and configuration come from CLI/config, not from untrusted request bodies; path traversal and injection are mitigated by not building paths from user-controlled strings.
+
+### 11.2 Memory usage
+
+- **Bounded working set**: Indexes (email, proposals, decisions) are loaded into memory but are bounded by the size of persisted state; the design avoids unbounded in-memory growth (e.g. no caches that grow without limit).
+- **Resource release**: HTTP sessions and other resources that are created per operation (e.g. LLM client sessions) should be closed or reused in long-running processes to avoid connection or handle buildup; see developers guide.
+- **Scale**: At expected scale (~100k transactions, ~70k emails), memory use should remain practical on typical workstations; workspace footprint target is under **50GB**.
+
+### 11.3 Performance and capacity targets
 
 Given expected scale:
 - ~100k+ transactions
@@ -375,7 +394,7 @@ Given expected scale:
 Design goals:
 - Prioritize **match quality over raw speed**.
 - Use indexing/caching to keep review startup practical.
-- Keep workspace footprint under **50GB**.
+- Keep workspace footprint under **50GB** (see §11.2).
 
 ---
 

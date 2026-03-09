@@ -47,7 +47,7 @@ After installation, the `gnc-enrich` console script is available (equivalent to 
 
 ### Core commands (user guide)
 
-Global flag: `-v` / `--verbose` enables DEBUG-level logging for all subcommands.
+Global flag: `-v` / `--verbose` enables DEBUG-level logging for all subcommands. **Note:** DEBUG logs may include transaction descriptions, email snippets, and LLM request/response content; avoid in shared or untrusted environments.
 
 #### 1) `run` — build proposals from source data
 
@@ -65,10 +65,10 @@ Key options:
 - **`--gnucash-path`**: Gzip-compressed XML GnuCash file.
 - **`--emails-dir`**: Directory of `.eml` files (scanned recursively).
 - **`--receipts-dir`** / **`--processed-receipts-dir`**: Receipt images in, processed receipts out.
-- **`--state-dir`**: Directory for indexes, proposals, decisions, and audit.
+- **`--state-dir`**: Directory for indexes, proposals, decisions, and audit. **May contain secrets**: if you use LLM API keys, they are stored in plain text in `run_config.json`. Restrict filesystem access to this directory.
 - **`--date-window-days`**, **`--amount-tolerance`**: Evidence matching controls.
 - **`--include-skipped`**: Re-process transactions previously skipped in review.
-- **LLM flags**: `--llm-mode`, `--llm-endpoint`, `--llm-model`, `--llm-use-web`, `--llm-timeout`, `--llm-extraction-endpoint`, `--llm-extraction-model` (see spec for detailed behaviour).
+- **LLM flags**: `--llm-mode`, `--llm-endpoint`, `--llm-model`, `--llm-use-web`, `--llm-warmup-on-start`, `--llm-timeout`, `--llm-extraction-endpoint`, `--llm-extraction-model` (see spec for detailed behaviour).
 
 #### 2) `review` — launch local review application
 
@@ -163,6 +163,12 @@ LLM integration is **optional** and **disabled by default**. At a high level:
 - Receipt OCR can optionally fall back to an LLM when Tesseract fails to extract a total.
 
 For the full LLM interaction model (extraction vs category, cross-product of modes, and prompt templates), see the specification’s LLM section.
+
+### Security and privacy
+
+- **State directory**: Stores proposals, decisions, and run metadata. When LLM is configured with API keys, they are persisted in `run_config.json` in plain text. Restrict read/write access to the state directory (e.g. `chmod 700`).
+- **Logging**: At INFO level, only sizes and timings are logged. With `-v` (DEBUG), logs may contain transaction text, email content, and LLM inputs/outputs; do not enable DEBUG on shared systems or when log output is not trusted.
+- **Review app**: Intended for local use (`127.0.0.1`). Do not expose the review server to untrusted networks without authentication.
 
 ---
 
