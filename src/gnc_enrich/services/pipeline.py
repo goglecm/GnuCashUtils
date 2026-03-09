@@ -99,7 +99,7 @@ class EnrichmentPipeline:
 
         state = StateRepository(config.state_dir)
         state.save_proposals(proposals)
-        meta = {
+        meta: dict[str, object] = {
             "gnucash_path": str(config.gnucash_path),
             "emails_dir": str(config.emails_dir),
             "receipts_dir": str(config.receipts_dir),

@@ -103,24 +103,27 @@ class ReceiptOcrEngine:
             line_items=line_items,
         )
 
+        cfg = self._llm_config
         if (
-            self._llm_config
-            and self._llm_config.mode != LlmMode.DISABLED
-            and self._llm_config.endpoint
-            and self._llm_config.model_name
+            cfg
+            and cfg.mode != LlmMode.DISABLED
+            and cfg.endpoint
+            and cfg.model_name
             and parsed_total is None
         ):
-            evidence = self._try_llm_fallback(evidence, receipt_path)
+            evidence = self._try_llm_fallback(evidence, receipt_path, cfg)
 
         return evidence
 
-    def _try_llm_fallback(self, evidence: ReceiptEvidence, receipt_path: Path) -> ReceiptEvidence:
+    def _try_llm_fallback(
+        self, evidence: ReceiptEvidence, receipt_path: Path, llm_config: LlmConfig
+    ) -> ReceiptEvidence:
         """Attempt LLM-based extraction when Tesseract fails to find a total."""
         logger.info("Tesseract found no total; attempting LLM fallback for %s", receipt_path)
         try:
             import json
 
-            client = LlmClient(self._llm_config)
+            client = LlmClient(llm_config)
             if not client.enabled:
                 return evidence
             resp_data = client.chat(
@@ -134,8 +137,8 @@ class ReceiptOcrEngine:
                         ),
                     }
                 ],
-                max_tokens=self._llm_config.max_tokens,
-                temperature=self._llm_config.temperature,
+                max_tokens=llm_config.max_tokens,
+                temperature=llm_config.temperature,
             )
             if not resp_data:
                 return evidence

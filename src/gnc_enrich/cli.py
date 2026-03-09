@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
             extraction_api_key=getattr(args, "llm_extraction_api_key", ""),
             warmup_on_start=getattr(args, "llm_warmup_on_start", False),
         )
-        config = RunConfig(
+        run_config = RunConfig(
             gnucash_path=args.gnucash_path,
             emails_dir=args.emails_dir,
             receipts_dir=args.receipts_dir,
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         from gnc_enrich.services.pipeline import EnrichmentPipeline
 
-        result = EnrichmentPipeline().run(config)
+        result = EnrichmentPipeline().run(run_config)
         print(
             f"Pipeline complete: {result.proposal_count} proposals, "
             f"{result.skipped_count} skipped"
@@ -165,18 +165,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "review":
-        config = ReviewConfig(state_dir=args.state_dir, host=args.host, port=args.port)
+        review_config = ReviewConfig(
+            state_dir=args.state_dir,
+            host=args.host,
+            port=args.port,
+        )
         from gnc_enrich.review.webapp import ReviewWebApp
         from gnc_enrich.review.service import ReviewQueueService
         from gnc_enrich.state.repository import StateRepository
 
-        state_repo = StateRepository(config.state_dir)
+        state_repo = StateRepository(review_config.state_dir)
         service = ReviewQueueService(state_repo)
-        ReviewWebApp(service, config).run(config.host, config.port)
+        ReviewWebApp(service, review_config).run(review_config.host, review_config.port)
         return 0
 
     if args.command == "apply":
-        config = ApplyConfig(
+        apply_config = ApplyConfig(
             state_dir=args.state_dir,
             create_backup=args.create_backup,
             backup_dir=args.backup_dir,
@@ -187,16 +191,16 @@ def main(argv: list[str] | None = None) -> int:
         from gnc_enrich.apply.engine import ApplyEngine
 
         engine = ApplyEngine()
-        if config.dry_run:
-            report = engine.generate_dry_run_report(config.state_dir)
+        if apply_config.dry_run:
+            report = engine.generate_dry_run_report(apply_config.state_dir)
             print(f"Dry-run report written to {report}")
         else:
             engine.apply(
-                config.state_dir,
-                create_backup=config.create_backup,
-                backup_dir=config.backup_dir,
-                in_place=config.in_place,
-                backup_retention=config.backup_retention,
+                apply_config.state_dir,
+                create_backup=apply_config.create_backup,
+                backup_dir=apply_config.backup_dir,
+                in_place=apply_config.in_place,
+                backup_retention=apply_config.backup_retention,
             )
             print("Changes applied successfully.")
         return 0

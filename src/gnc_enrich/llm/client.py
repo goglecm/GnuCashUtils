@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+import requests  # type: ignore[import-untyped]
+
 from gnc_enrich.config import LlmConfig, LlmMode
 
 logger = logging.getLogger(__name__)
@@ -48,8 +50,6 @@ class LlmClient:
 
     def _get_session(self):
         if self._session is None:
-            import requests
-
             self._session = requests.Session()
         return self._session
 
@@ -66,8 +66,6 @@ class LlmClient:
         """
         if not self.enabled:
             return None
-
-        import requests
 
         payload: dict[str, Any] = {
             "model": self.config.model_name,

@@ -1235,7 +1235,7 @@ class CategoryPredictor:
 
             extraction: dict | None = None
             extracted_from_emails: str | None = None
-            if emails_sorted and getattr(self._llm_config, "extraction_endpoint", ""):
+            if emails_sorted and self._llm_config.extraction_endpoint:
                 extraction = self._query_llm_extract(emails_sorted, tx.amount)
                 if extraction:
                     extracted_from_emails = self._format_extraction_for_prompt(extraction)
