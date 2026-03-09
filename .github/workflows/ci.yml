@@ -25,14 +25,14 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run ruff
-        run: ruff .
+        run: python -m ruff .
 
       - name: Run black (check only)
-        run: black --check .
+        run: python -m black --check .
 
       - name: Run mypy
-        run: mypy src/gnc_enrich
+        run: python -m mypy src/gnc_enrich
 
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
 
