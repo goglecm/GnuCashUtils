@@ -52,6 +52,7 @@ class ReviewQueueService:
                 endpoint=meta.get("llm_endpoint", ""),
                 model_name=meta.get("llm_model", ""),
                 use_web=meta.get("llm_use_web", False),
+                warmup_on_start=meta.get("llm_warmup_on_start", False),
                 extraction_endpoint=meta.get("llm_extraction_endpoint", ""),
                 extraction_model=meta.get("llm_extraction_model", ""),
                 extraction_api_key=meta.get("llm_extraction_api_key", ""),

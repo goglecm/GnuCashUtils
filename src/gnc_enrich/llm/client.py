@@ -17,11 +17,28 @@ class LlmClient:
     """Small helper around an LLM HTTP endpoint.
 
     This wrapper centralises timeout, retries, and connection reuse so that all
-    LLM call sites behave consistently.
+    LLM call sites behave consistently. Long-running processes that create many
+    clients (e.g. a review server handling many LLM requests) should call
+    close() when done or use the context manager to avoid leaving connections open.
     """
 
     config: LlmConfig
     _session: Any | None = field(default=None, init=False, repr=False)
+
+    def close(self) -> None:
+        """Release the HTTP session. Safe to call multiple times."""
+        if self._session is not None:
+            try:
+                self._session.close()
+            except Exception:
+                pass
+            self._session = None
+
+    def __enter__(self) -> LlmClient:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
 
     @property
     def enabled(self) -> bool:
@@ -84,7 +101,7 @@ class LlmClient:
                 elapsed = time.perf_counter() - t0
                 logger.info(
                     "LLM request: %d chars, response_time=%.2fs",
-                    sum(len(m.get("content", "")) for m in messages),
+                    sum(len(str(m.get("content", ""))) for m in messages),
                     elapsed,
                 )
                 resp.raise_for_status()

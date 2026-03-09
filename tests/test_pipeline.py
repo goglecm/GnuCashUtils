@@ -159,6 +159,7 @@ def test_run_config_persists_llm_and_extraction_when_set(tmp_path: Path) -> None
             endpoint="http://llm:8080",
             model_name="test-model",
             use_web=True,
+            warmup_on_start=True,
             extraction_endpoint="http://extract:8080",
             extraction_model="extract-model",
         ),
@@ -174,6 +175,7 @@ def test_run_config_persists_llm_and_extraction_when_set(tmp_path: Path) -> None
     assert meta.get("llm_use_web") is True
     assert meta.get("llm_extraction_endpoint") == "http://extract:8080"
     assert meta.get("llm_extraction_model") == "extract-model"
+    assert meta.get("llm_warmup_on_start") is True
 
 
 def test_account_paths_saved_after_pipeline_run(tmp_path: Path) -> None:

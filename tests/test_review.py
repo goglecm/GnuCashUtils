@@ -535,6 +535,35 @@ class TestReviewWebApp:
         assert updated.suggested_description == "ML description"
         assert updated.suggested_splits[0].account_path == "Expenses:Miscellaneous"
 
+    def test_run_config_loads_llm_warmup_on_start(self, tmp_path: Path) -> None:
+        """When run_config has llm_warmup_on_start True, ReviewQueueService builds LlmConfig with warmup_on_start True."""
+        state = StateRepository(tmp_path)
+        state.save_metadata("account_paths", {"paths": ["Expenses:Food"]})
+        state.save_metadata("run_config", {
+            "llm_mode": "online",
+            "llm_endpoint": "http://x",
+            "llm_model": "y",
+            "llm_warmup_on_start": True,
+        })
+        prop = Proposal(
+            proposal_id="p1", tx_id="tx1",
+            suggested_description="ML", suggested_splits=[Split(account_path="Expenses:Food", amount=Decimal("25.00"))],
+            confidence=0.5, rationale="ML",
+            tx_date=date(2025, 1, 15), tx_amount=Decimal("25.00"),
+            original_description="TESCO", original_splits=[],
+            evidence=EvidencePacket(tx_id="tx1", emails=[]),
+        )
+        state.save_proposals([prop])
+        svc = ReviewQueueService(state)
+        with patch("gnc_enrich.review.service.CategoryPredictor") as MockPredictor:
+            mock_instance = MockPredictor.return_value
+            mock_instance.run_llm_check.return_value = {
+                "extraction": {}, "category": "Expenses:Food", "description": "OK", "confidence": 0.8,
+            }
+            svc.run_llm_check("p1")
+        call_kwargs = MockPredictor.call_args[1]
+        assert call_kwargs["llm_config"].warmup_on_start is True
+
     def test_run_llm_check_returns_none_does_not_update_proposal(self, tmp_path: Path) -> None:
         """When run_llm_check returns None (flow failed or disabled), proposal is not updated and service returns None."""
         state = StateRepository(tmp_path)

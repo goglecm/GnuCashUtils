@@ -94,3 +94,64 @@ def test_warmup_is_noop_when_disabled() -> None:
     elapsed = time.perf_counter() - start
     assert elapsed < 0.5
 
+
+def test_warmup_when_enabled_does_not_raise_if_chat_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """warmup() does not raise when the client is enabled but chat() returns None (e.g. backend down)."""
+    import requests
+
+    cfg = LlmConfig(
+        mode=LlmMode.ONLINE,
+        endpoint="http://llm.test/v1/chat/completions",
+        model_name="test-model",
+        timeout_seconds=1,
+    )
+    client = LlmClient(cfg)
+
+    class FailingSession:
+        def post(self, url, json=None, headers=None, timeout=None):  # type: ignore[override]
+            raise requests.RequestException("backend down")
+
+    monkeypatch.setattr(
+        LlmClient,
+        "_get_session",
+        lambda self: FailingSession(),  # type: ignore[method-assign]
+    )
+    # chat() returns None after retries; warmup must not raise
+    client.warmup()
+
+
+def test_enabled_false_when_endpoint_or_model_empty() -> None:
+    """enabled is False when mode is online but endpoint or model_name is empty."""
+    assert LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="", model_name="x")).enabled is False
+    assert LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="")).enabled is False
+    assert LlmClient(LlmConfig(mode=LlmMode.ONLINE, endpoint="http://x", model_name="m")).enabled is True
+
+
+def test_close_releases_session_and_is_idempotent() -> None:
+    """close() releases the HTTP session; calling it again is safe."""
+    cfg = LlmConfig(
+        mode=LlmMode.ONLINE,
+        endpoint="http://llm.test/v1/chat/completions",
+        model_name="m",
+    )
+    client = LlmClient(cfg)
+    _ = client._get_session()
+    assert client._session is not None
+    client.close()
+    assert client._session is None
+    client.close()
+    assert client._session is None
+
+
+def test_context_manager_closes_on_exit() -> None:
+    """Using LlmClient as context manager calls close() on exit."""
+    cfg = LlmConfig(
+        mode=LlmMode.ONLINE,
+        endpoint="http://llm.test/v1/chat/completions",
+        model_name="m",
+    )
+    with LlmClient(cfg) as client:
+        _ = client._get_session()
+        assert client._session is not None
+    assert client._session is None
+

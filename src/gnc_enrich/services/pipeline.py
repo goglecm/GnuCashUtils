@@ -108,6 +108,7 @@ class EnrichmentPipeline:
             meta["llm_extraction_model"] = getattr(config.llm, "extraction_model", "")
             meta["llm_extraction_api_key"] = getattr(config.llm, "extraction_api_key", "") or ""
         meta["llm_use_web"] = getattr(config.llm, "use_web", False)
+        meta["llm_warmup_on_start"] = getattr(config.llm, "warmup_on_start", False)
         state.save_metadata("run_config", meta)
 
         skipped = state.load_skipped_ids()

@@ -28,6 +28,16 @@ from gnc_enrich.domain.models import (
 
 logger = logging.getLogger(__name__)
 
+# Limit snippet length in DEBUG logs to reduce PII exposure (transaction text, emails, LLM I/O).
+_LOG_SNIPPET_MAX = 200
+
+
+def _truncate_for_log(s: str, max_len: int = _LOG_SNIPPET_MAX) -> str:
+    """Return a short snippet for logging; avoids logging full PII."""
+    if not s or len(s) <= max_len:
+        return s
+    return s[:max_len] + "..."
+
 
 def _has_name_like_content(s: str) -> bool:
     """True if string contains at least one letter (i.e. looks like a name/description, not just amount/digits)."""
@@ -372,7 +382,7 @@ class CategoryPredictor:
             logger.debug(
                 "LLM (receipt items) full request (%d chars):\n%s\n<<< END LLM REQUEST >>>",
                 len(user_content),
-                user_content,
+                _truncate_for_log(user_content),
             )
             data = client.chat(
                 messages=[{"role": "user", "content": user_content}],
@@ -389,7 +399,7 @@ class CategoryPredictor:
             )
             logger.debug(
                 "LLM (receipt items) full response:\n%s\n<<< END LLM RESPONSE >>>",
-                content,
+                _truncate_for_log(content),
             )
             expanded = json.loads(content)
             if isinstance(expanded, list) and len(expanded) == len(terse_names):
@@ -699,7 +709,7 @@ class CategoryPredictor:
                 return data if isinstance(data, dict) else None
             except json.JSONDecodeError:
                 pass
-        logger.debug("LLM response is not valid JSON: %s", s[:200])
+        logger.debug("LLM response is not valid JSON: %s", _truncate_for_log(s))
         return None
 
     def _llm_post(self, user_content: str, label: str, max_tokens: int = 300) -> str | None:
@@ -712,7 +722,7 @@ class CategoryPredictor:
                 "LLM (%s) full request (%d chars):\n%s\n<<< END LLM REQUEST >>>",
                 label,
                 len(user_content),
-                user_content,
+                _truncate_for_log(user_content),
             )
             data = client.chat(
                 messages=[{"role": "user", "content": user_content}],
@@ -732,7 +742,7 @@ class CategoryPredictor:
             logger.debug(
                 "LLM (%s) full response:\n%s\n<<< END LLM RESPONSE >>>",
                 label,
-                raw,
+                _truncate_for_log(raw),
             )
             return raw
         except Exception:
@@ -758,14 +768,14 @@ class CategoryPredictor:
             client = LlmClient(llm_cfg)
             if not client.enabled:
                 return None
-            total_chars = sum(len(m.get("content", "")) for m in messages)
+            total_chars = sum(len(str(m.get("content", ""))) for m in messages)
             request_body = "\n---\n".join(
-                f"[{m.get('role', '')}]: {m.get('content', '')}" for m in messages
+                f"[{m.get('role', '')}]: {str(m.get('content', ''))}" for m in messages
             )
             logger.debug(
                 "LLM (extraction) full request (%d chars):\n%s\n<<< END LLM REQUEST >>>",
                 total_chars,
-                request_body,
+                _truncate_for_log(request_body),
             )
             data = client.chat(messages=messages, max_tokens=max_tokens)
             if not data:
@@ -778,7 +788,7 @@ class CategoryPredictor:
             )
             logger.debug(
                 "LLM (extraction) full response:\n%s\n<<< END LLM RESPONSE >>>",
-                raw,
+                _truncate_for_log(raw),
             )
             return raw
         except Exception:
