@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from pathlib import Path
+import shutil
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
@@ -106,6 +107,11 @@ class TestExtractLineItems:
 
 class TestReceiptOcrEngine:
 
+    _HAS_TESSERACT = shutil.which("tesseract") is not None
+
+    @pytest.mark.skipif(
+        not _HAS_TESSERACT, reason="tesseract binary not available on PATH in this environment"
+    )
     def test_parse_simple_receipt(self, simple_receipt: Path) -> None:
         engine = ReceiptOcrEngine()
         ev = engine.parse(simple_receipt)
@@ -113,17 +119,26 @@ class TestReceiptOcrEngine:
         assert ev.source_path == str(simple_receipt)
         assert ev.evidence_id != ""
 
+    @pytest.mark.skipif(
+        not _HAS_TESSERACT, reason="tesseract binary not available on PATH in this environment"
+    )
     def test_total_extracted_from_image(self, simple_receipt: Path) -> None:
         engine = ReceiptOcrEngine()
         ev = engine.parse(simple_receipt)
         if ev.parsed_total is not None:
             assert ev.parsed_total == Decimal("3.50")
 
+    @pytest.mark.skipif(
+        not _HAS_TESSERACT, reason="tesseract binary not available on PATH in this environment"
+    )
     def test_multi_item_receipt(self, multi_item_receipt: Path) -> None:
         engine = ReceiptOcrEngine()
         ev = engine.parse(multi_item_receipt)
         assert ev.ocr_text != ""
 
+    @pytest.mark.skipif(
+        not _HAS_TESSERACT, reason="tesseract binary not available on PATH in this environment"
+    )
     def test_real_world_receipts_parse_without_error(self) -> None:
         """Smoke-test OCR on bundled real-world receipt images."""
         fixtures_dir = Path(__file__).parent / "fixtures" / "receipts"
@@ -202,7 +217,7 @@ class TestReceiptOcrEngineLlmFallback:
             line_items=[],
         )
 
-        updated = engine._try_llm_fallback(evidence, dummy_image)
+        updated = engine._try_llm_fallback(evidence, dummy_image, llm_cfg)
         assert updated.parsed_total == Decimal("29.99")
         assert updated.line_items
         assert any(it.description == "Bike light" for it in updated.line_items)
@@ -248,7 +263,7 @@ class TestReceiptOcrEngineLlmFallback:
             line_items=[],
         )
 
-        updated = engine._try_llm_fallback(evidence, dummy_image)
+        updated = engine._try_llm_fallback(evidence, dummy_image, llm_cfg)
         # On failure, we should get the original evidence back with no total.
         assert updated.parsed_total is None
         assert updated.line_items == []
