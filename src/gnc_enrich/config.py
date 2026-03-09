@@ -31,6 +31,8 @@ class LlmConfig:
     extraction_endpoint: str = ""
     extraction_model: str = ""
     extraction_api_key: str = ""
+    # Optional: send a tiny warmup request at pipeline start to reduce first-call latency.
+    warmup_on_start: bool = False
 
 
 @dataclass(slots=True)

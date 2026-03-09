@@ -13,6 +13,7 @@ from PIL import Image
 
 from gnc_enrich.config import LlmConfig, LlmMode
 from gnc_enrich.domain.models import LineItem, ReceiptEvidence
+from gnc_enrich.llm.client import LlmClient
 
 logger = logging.getLogger(__name__)
 
@@ -118,11 +119,13 @@ class ReceiptOcrEngine:
         """Attempt LLM-based extraction when Tesseract fails to find a total."""
         logger.info("Tesseract found no total; attempting LLM fallback for %s", receipt_path)
         try:
-            import requests
+            import json
 
-            payload = {
-                "model": self._llm_config.model_name,
-                "messages": [
+            client = LlmClient(self._llm_config)
+            if not client.enabled:
+                return evidence
+            resp_data = client.chat(
+                messages=[
                     {
                         "role": "user",
                         "content": (
@@ -132,23 +135,21 @@ class ReceiptOcrEngine:
                         ),
                     }
                 ],
-                "temperature": self._llm_config.temperature,
-                "max_tokens": self._llm_config.max_tokens,
-            }
-            headers = {}
-            if self._llm_config.api_key:
-                headers["Authorization"] = f"Bearer {self._llm_config.api_key}"
-            resp = requests.post(
-                self._llm_config.endpoint,
-                json=payload,
-                headers=headers,
-                timeout=self._llm_config.timeout_seconds,
+                max_tokens=self._llm_config.max_tokens,
+                temperature=self._llm_config.temperature,
             )
-            resp.raise_for_status()
-            import json
-
-            content = resp.json()["choices"][0]["message"]["content"]
-            data = json.loads(content)
+            if not resp_data:
+                return evidence
+            # For backwards compatibility with existing tests/spec, assume an
+            # OpenAI-style response shape and extract the message content.
+            msg_text = (
+                resp_data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            if not msg_text:
+                return evidence
+            data = json.loads(msg_text)
             if "total" in data and data["total"]:
                 evidence.parsed_total = Decimal(str(data["total"]))
             if "items" in data and isinstance(data["items"], list):

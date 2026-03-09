@@ -179,32 +179,23 @@ class TestCategoryPredictor:
         tx = _make_target_tx(desc="Unknown purchase")
         account_paths = ["Expenses:Shopping", "Expenses:Shopping:Online", "Expenses:Food"]
 
-        with patch("requests.post") as mock_post:
-            resp_extract = MagicMock()
-            resp_extract.json.return_value = {"choices": [{"message": {"content": '{"seller_name": "", "items": []}'}}]}
-            resp_extract.raise_for_status = MagicMock()
-            resp1 = MagicMock()
-            resp1.json.return_value = {
-                "choices": [{
-                    "message": {
-                        "content": '{"improved_description": "Unknown purchase 15/01/2025", "confidence": 8, "category": "Shopping"}'
-                    }
-                }]
-            }
-            resp1.raise_for_status = MagicMock()
-            resp2 = MagicMock()
-            resp2.json.return_value = {
-                "choices": [{
-                    "message": {
-                        "content": '{"category": "Online"}'
-                    }
-                }]
-            }
-            resp2.raise_for_status = MagicMock()
-            mock_post.side_effect = [resp_extract, resp1, resp2]
+        with patch("gnc_enrich.llm.client.LlmClient.chat") as mock_chat:
+            mock_chat.side_effect = [
+                {"choices": [{"message": {"content": '{"seller_name": "", "items": []}'}}]},
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": '{"improved_description": "Unknown purchase 15/01/2025", "confidence": 8, "category": "Shopping"}'
+                            }
+                        }
+                    ]
+                },
+                {"choices": [{"message": {"content": '{"category": "Online"}'}}]},
+            ]
 
             proposal = predictor.propose(tx, [], None, account_paths=account_paths)
-            assert mock_post.call_count == 3
+            assert mock_chat.call_count == 3
             assert "LLM suggestion" in proposal.rationale
             assert proposal.suggested_splits[0].account_path == "Expenses:Shopping:Online"
             assert proposal.suggested_description == "Unknown purchase 15/01/2025"
@@ -215,14 +206,11 @@ class TestCategoryPredictor:
         llm_cfg = LlmConfig(mode=LlmMode.ONLINE, endpoint="http://fake:1234/v1/chat/completions", model_name="test")
         predictor = CategoryPredictor(llm_config=llm_cfg)
         tx = _make_target_tx(desc="Unknown purchase")
-        with patch("requests.post") as mock_post:
-            mock_resp = MagicMock()
-            mock_resp.json.return_value = {"choices": [{"message": {"content": "[]"}}]}
-            mock_resp.raise_for_status = MagicMock()
-            mock_post.return_value = mock_resp
+        with patch("gnc_enrich.llm.client.LlmClient.chat") as mock_chat:
+            mock_chat.return_value = {"choices": [{"message": {"content": "[]"}}]}
             proposal = predictor.propose(tx, [], None, account_paths=["Expenses:Food"])
             # No emails: extract-from-description then step1; both get "[]" and are ignored
-            assert mock_post.call_count == 2
+            assert mock_chat.call_count == 2
             assert "LLM suggestion" not in proposal.rationale
             assert proposal.suggested_splits[0].account_path == "Expenses:Miscellaneous"
 
@@ -327,11 +315,11 @@ class TestCategoryPredictor:
         )
         predictor = CategoryPredictor(llm_config=llm_cfg)
         tx = _make_target_tx(desc="Unknown purchase")
-        with patch("requests.post") as mock_post:
-            mock_post.side_effect = requests.exceptions.ReadTimeout("Read timed out")
+        with patch("gnc_enrich.llm.client.LlmClient.chat") as mock_chat:
+            mock_chat.side_effect = requests.exceptions.ReadTimeout("Read timed out")
             proposal = predictor.propose(tx, [], None, account_paths=["Expenses:Food"])
             # No emails: extract-from-description then step1; both time out → ML fallback
-            assert mock_post.call_count == 2
+            assert mock_chat.call_count == 2
             assert proposal is not None
             assert "LLM suggestion" not in proposal.rationale
             assert proposal.suggested_splits[0].account_path == "Expenses:Miscellaneous"

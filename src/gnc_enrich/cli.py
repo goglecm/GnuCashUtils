@@ -65,6 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECS",
         help="Timeout in seconds for LLM API calls (default 180; local Ollama can be slow)",
     )
+    run.add_argument(
+        "--llm-warmup-on-start",
+        action="store_true",
+        help="Send a small warmup request to the LLM at the start of run (may reduce first-call latency).",
+    )
 
     review = sub.add_parser("review", help="Run local web review app")
     review.add_argument("--state-dir", type=Path, required=True)
@@ -129,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
             extraction_endpoint=getattr(args, "llm_extraction_endpoint", ""),
             extraction_model=getattr(args, "llm_extraction_model", ""),
             extraction_api_key=getattr(args, "llm_extraction_api_key", ""),
+            warmup_on_start=getattr(args, "llm_warmup_on_start", False),
         )
         config = RunConfig(
             gnucash_path=args.gnucash_path,

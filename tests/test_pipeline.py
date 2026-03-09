@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from gnc_enrich.config import RunConfig
+from gnc_enrich.config import LlmConfig, LlmMode, RunConfig
 from gnc_enrich.services.pipeline import EnrichmentPipeline, _test_llm_connection
 from gnc_enrich.state.repository import StateRepository
 from tests.conftest import SAMPLE_GNUCASH_XML
@@ -49,15 +49,26 @@ def _make_config(dirs: dict[str, Path]) -> RunConfig:
 
 def test_llm_connection_test_success() -> None:
     """When the endpoint returns a valid chat completion, _test_llm_connection returns True."""
-    mock_resp = type("Res", (), {"raise_for_status": lambda self: None, "json": lambda self: {"choices": [{"message": {"content": "OK"}}]}})()
-    with patch("requests.post", return_value=mock_resp):
-        assert _test_llm_connection("http://localhost:11434/v1/chat/completions", "llama3", "") is True
+    cfg = LlmConfig(
+        mode=LlmMode.ONLINE,
+        endpoint="http://localhost:11434/v1/chat/completions",
+        model_name="llama3",
+    )
+    with patch("gnc_enrich.services.pipeline.LlmClient.chat") as mock_chat:
+        mock_chat.return_value = {"choices": [{"message": {"content": "OK"}}]}
+        assert _test_llm_connection(cfg) is True
 
 
 def test_llm_connection_test_missing_endpoint_returns_false() -> None:
     """Missing endpoint or model returns False without making a request."""
-    assert _test_llm_connection("", "llama3", "") is False
-    assert _test_llm_connection("http://localhost:11434", "", "") is False
+    cfg_empty_endpoint = LlmConfig(mode=LlmMode.ONLINE, endpoint="", model_name="llama3")
+    cfg_empty_model = LlmConfig(
+        mode=LlmMode.ONLINE,
+        endpoint="http://localhost:11434",
+        model_name="",
+    )
+    assert _test_llm_connection(cfg_empty_endpoint) is False
+    assert _test_llm_connection(cfg_empty_model) is False
 
 
 def test_pipeline_generates_proposals(tmp_path: Path) -> None:

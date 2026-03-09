@@ -255,6 +255,39 @@ class TestEmailIndexRepository:
         assert "order_confirm.eml" in manifest["indexed_files"]
         assert len(manifest["indexed_files"]) == 13
 
+    def test_index_deduplicates_by_message_id(self, tmp_path: Path) -> None:
+        """Emails with the same Message-ID are indexed once, even if stored as multiple .eml files."""
+        emails_dir = tmp_path / "emails"
+        emails_dir.mkdir()
+        content = (
+            "From: a@example.com\n"
+            "To: b@example.com\n"
+            "Subject: First copy\n"
+            "Date: Mon, 13 Jan 2025 10:00:00 +0000\n"
+            "Message-ID: <dup@test>\n"
+            "\n"
+            "Body £10.00\n"
+        )
+        (emails_dir / "copy1.eml").write_text(content, encoding="utf-8")
+        (emails_dir / "copy2.eml").write_text(
+            content.replace("First copy", "Second copy"), encoding="utf-8"
+        )
+
+        repo = EmailIndexRepository()
+        repo.build_or_load(emails_dir, tmp_path)
+
+        # Only one evidence entry is kept in memory and written to the index,
+        # but both files are recorded in the manifest so they are not reindexed.
+        assert len(repo.entries) == 1
+        index_lines = [
+            l
+            for l in (tmp_path / "email_index.jsonl").read_text(encoding="utf-8").splitlines()
+            if l.strip() and '"_schema_version"' not in l
+        ]
+        assert len(index_lines) == 1
+        manifest = json.loads((tmp_path / "email_index_manifest.json").read_text(encoding="utf-8"))
+        assert sorted(manifest.get("indexed_files", [])) == ["copy1.eml", "copy2.eml"]
+
     def test_build_or_load_skips_invalid_index_line_shape(self, tmp_path: Path) -> None:
         """When index has a valid JSON line missing required evidence keys, that line is skipped."""
         state_dir = tmp_path / "state"

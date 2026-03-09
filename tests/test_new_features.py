@@ -231,14 +231,11 @@ class TestTerseItemLookup:
         result = predictor.describe_terse_items(receipt)
         assert result == []
 
-    @patch("requests.post")
-    def test_llm_expands_terse_items(self, mock_post) -> None:
-        mock_post.return_value.status_code = 200
-        mock_post.return_value.raise_for_status = lambda: None
-        mock_post.return_value.json.return_value = {
+    @patch("gnc_enrich.llm.client.LlmClient.chat")
+    def test_llm_expands_terse_items(self, mock_chat) -> None:
+        mock_chat.return_value = {
             "choices": [{"message": {"content": '["Wholemeal Bread", "2 Litre Milk"]'}}]
         }
-
         predictor = CategoryPredictor(
             llm_config=LlmConfig(mode=LlmMode.OFFLINE, endpoint="http://llm:1234", model_name="test")
         )
@@ -248,7 +245,7 @@ class TestTerseItemLookup:
         ])
         result = predictor.describe_terse_items(receipt)
         assert result == ["Wholemeal Bread", "2 Litre Milk"]
-        mock_post.assert_called_once()
+        mock_chat.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

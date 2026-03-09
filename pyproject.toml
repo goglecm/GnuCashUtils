@@ -32,9 +32,32 @@ where = ["src"]
 gnc_enrich = ["prompts/*.txt"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = [
+    "pytest>=8.0",
+    "ruff",
+    "black",
+    "mypy",
+    "pre-commit",
+]
 web = ["ddgs"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-select = ["I"]  # import sorting
+src = ["src", "tests"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+show_error_codes = true
+pretty = true
+strict_optional = true

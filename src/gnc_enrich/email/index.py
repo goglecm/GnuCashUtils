@@ -57,6 +57,10 @@ class EmailIndexRepository:
     def __init__(self) -> None:
         self._entries: list[EmailEvidence] = []
         self._indexed_files: set[str] = set()
+        # Many real-world exports (e.g. mail folders, labels) contain the same
+        # message more than once.  We de-duplicate by Message-ID so matching and
+        # search do not pay the cost of duplicate evidence.
+        self._indexed_message_ids: set[str] = set()
         self._parser = EmlParser()
 
     def build_or_load(
@@ -78,6 +82,7 @@ class EmailIndexRepository:
 
         self._entries.clear()
         self._indexed_files.clear()
+        self._indexed_message_ids.clear()
 
         if manifest_path.exists():
             try:
@@ -102,6 +107,8 @@ class EmailIndexRepository:
                 except (KeyError, TypeError, ValueError):
                     logger.warning("Skipping invalid email index line %d in %s", lineno, index_path)
                     continue
+                if ev.message_id:
+                    self._indexed_message_ids.add(ev.message_id)
                 ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
                 if min_date is not None and ev_date < min_date:
                     continue
@@ -126,6 +133,14 @@ class EmailIndexRepository:
                     processed_count += 1
                     if processed_count % 5000 == 0:
                         logger.info("Processed %d emails", processed_count)
+                    # Skip duplicates by Message-ID to avoid indexing the same
+                    # email multiple times when it appears in several folders.
+                    msg_id = ev.message_id
+                    if msg_id and msg_id in self._indexed_message_ids:
+                        self._indexed_files.add(fname)
+                        continue
+                    if msg_id:
+                        self._indexed_message_ids.add(msg_id)
                     ev_date = ev.sent_at.date() if isinstance(ev.sent_at, datetime) else ev.sent_at
                     if min_date is not None and ev_date < min_date:
                         idx_f.write(json.dumps(_serialize_evidence(ev)) + "\n")

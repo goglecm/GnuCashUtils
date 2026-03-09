@@ -267,6 +267,61 @@ pytest tests/test_integration.py -v
 
 ---
 
+## Static analysis and formatting
+
+This project uses a small set of tools to keep the codebase consistent:
+
+- `ruff` — linting and import sorting.
+- `black` — code formatting.
+- `mypy` — static type checking for `src/gnc_enrich`.
+
+Configuration for all three lives in `pyproject.toml`. To install the tools, use:
+
+```bash
+pip install -e ".[dev]"
+```
+
+To run them manually:
+
+```bash
+ruff .
+black .
+mypy src/gnc_enrich
+```
+
+### Pre-commit hooks
+
+The repository includes a `.pre-commit-config.yaml` that runs `ruff`, `black`, `mypy`, and basic
+whitespace/EOF checks. To enable it locally:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Then either let it run automatically on each commit, or run all hooks explicitly with:
+
+```bash
+pre-commit run --all-files
+```
+
+---
+
+## Continuous integration
+
+GitHub Actions runs the same checks on every push and pull request to `main`. The workflow is
+defined in `.github/workflows/ci.yml` and performs:
+
+- `ruff .`
+- `black --check .`
+- `mypy src/gnc_enrich`
+- `pytest -q`
+
+Code should pass these checks locally (via `pip install -e ".[dev]"` and the commands above)
+before pushing changes.
+
+---
+
 ## Project Structure
 
 ```

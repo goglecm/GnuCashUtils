@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from gnc_enrich.config import LlmConfig, LlmMode
+from gnc_enrich.llm.client import LlmClient
 from gnc_enrich.prompts import get_prompts_dir, load_template, render
 from gnc_enrich.domain.models import (
     EmailEvidence,
@@ -360,42 +361,32 @@ class CategoryPredictor:
 
         terse_names = [it.description for it in receipt.line_items]
         try:
-            import requests
-
-            payload = {
-                "model": self._llm_config.model_name,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": (
-                            "Expand each receipt item name to a clear description. "
-                            "Return a JSON array of strings, one per input item.\n\n"
-                            + json.dumps(terse_names)
-                        ),
-                    }
-                ],
-                "temperature": self._llm_config.temperature,
-                "max_tokens": self._llm_config.max_tokens,
-            }
-            headers = {}
-            if self._llm_config.api_key:
-                headers["Authorization"] = f"Bearer {self._llm_config.api_key}"
-            timeout = getattr(self._llm_config, "timeout_seconds", 180)
-            user_content = payload["messages"][0]["content"]
-            query_chars = len(user_content)
+            client = LlmClient(self._llm_config)
+            if not client.enabled:
+                return terse_names
+            user_content = (
+                "Expand each receipt item name to a clear description. "
+                "Return a JSON array of strings, one per input item.\n\n"
+                + json.dumps(terse_names)
+            )
             logger.debug(
                 "LLM (receipt items) full request (%d chars):\n%s\n<<< END LLM REQUEST >>>",
-                query_chars,
+                len(user_content),
                 user_content,
             )
-            t0 = time.perf_counter()
-            resp = requests.post(
-                self._llm_config.endpoint, json=payload, headers=headers, timeout=timeout
+            data = client.chat(
+                messages=[{"role": "user", "content": user_content}],
+                max_tokens=self._llm_config.max_tokens,
+                temperature=self._llm_config.temperature,
             )
-            elapsed = time.perf_counter() - t0
-            logger.info("LLM query (receipt items): size=%d chars, response_time=%.2fs", query_chars, elapsed)
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"].strip()
+            if not data:
+                return terse_names
+            content = (
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
             logger.debug(
                 "LLM (receipt items) full response:\n%s\n<<< END LLM RESPONSE >>>",
                 content,
@@ -714,32 +705,28 @@ class CategoryPredictor:
     def _llm_post(self, user_content: str, label: str, max_tokens: int = 300) -> str | None:
         """Send one user message to the LLM; return raw content or None. Logs size and response time."""
         try:
-            import requests
-            payload = {
-                "model": self._llm_config.model_name,
-                "messages": [{"role": "user", "content": user_content}],
-                "temperature": self._llm_config.temperature,
-                "max_tokens": max_tokens,
-            }
-            headers = {}
-            if self._llm_config.api_key:
-                headers["Authorization"] = f"Bearer {self._llm_config.api_key}"
-            timeout = getattr(self._llm_config, "timeout_seconds", 180)
-            query_chars = len(user_content)
+            client = LlmClient(self._llm_config)
+            if not client.enabled:
+                return None
             logger.debug(
                 "LLM (%s) full request (%d chars):\n%s\n<<< END LLM REQUEST >>>",
                 label,
-                query_chars,
+                len(user_content),
                 user_content,
             )
-            t0 = time.perf_counter()
-            resp = requests.post(
-                self._llm_config.endpoint, json=payload, headers=headers, timeout=timeout
+            data = client.chat(
+                messages=[{"role": "user", "content": user_content}],
+                max_tokens=max_tokens,
+                temperature=self._llm_config.temperature,
             )
-            elapsed = time.perf_counter() - t0
-            logger.info("LLM query (%s): size=%d chars, response_time=%.2fs", label, query_chars, elapsed)
-            resp.raise_for_status()
-            raw = resp.json()["choices"][0]["message"]["content"].strip()
+            if not data:
+                return None
+            raw = (
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             logger.debug(
@@ -748,9 +735,6 @@ class CategoryPredictor:
                 raw,
             )
             return raw
-        except requests.exceptions.Timeout as e:
-            logger.warning("LLM request timed out (%s); %s", label, e)
-            return None
         except Exception:
             logger.warning("LLM query failed (%s)", label, exc_info=True)
             return None
@@ -762,16 +746,18 @@ class CategoryPredictor:
         if not endpoint or not model:
             return None
         try:
-            import requests
-            api_key = getattr(self._llm_config, "extraction_api_key", "") or ""
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": getattr(self._llm_config, "temperature", 0.2),
-                "max_tokens": max_tokens,
-            }
-            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            timeout = getattr(self._llm_config, "timeout_seconds", 180)
+            llm_cfg = LlmConfig(
+                mode=self._llm_config.mode,
+                endpoint=endpoint,
+                model_name=model,
+                api_key=getattr(self._llm_config, "extraction_api_key", "") or "",
+                temperature=getattr(self._llm_config, "temperature", 0.2),
+                max_tokens=max_tokens,
+                timeout_seconds=getattr(self._llm_config, "timeout_seconds", 180),
+            )
+            client = LlmClient(llm_cfg)
+            if not client.enabled:
+                return None
             total_chars = sum(len(m.get("content", "")) for m in messages)
             request_body = "\n---\n".join(
                 f"[{m.get('role', '')}]: {m.get('content', '')}" for m in messages
@@ -781,20 +767,20 @@ class CategoryPredictor:
                 total_chars,
                 request_body,
             )
-            t0 = time.perf_counter()
-            resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
-            elapsed = time.perf_counter() - t0
-            logger.info("LLM query (extraction): %d messages, %d chars, response_time=%.2fs", len(messages), total_chars, elapsed)
-            resp.raise_for_status()
-            raw = resp.json()["choices"][0]["message"]["content"].strip()
+            data = client.chat(messages=messages, max_tokens=max_tokens)
+            if not data:
+                return None
+            raw = (
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
             logger.debug(
                 "LLM (extraction) full response:\n%s\n<<< END LLM RESPONSE >>>",
                 raw,
             )
             return raw
-        except requests.exceptions.Timeout as e:
-            logger.warning("Extraction LLM request timed out; %s", e)
-            return None
         except Exception:
             logger.warning("Extraction LLM query failed", exc_info=True)
             return None

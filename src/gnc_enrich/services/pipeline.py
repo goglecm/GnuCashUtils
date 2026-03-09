@@ -8,13 +8,14 @@ import time
 from dataclasses import dataclass
 from datetime import timedelta
 
-from gnc_enrich.config import LlmMode, RunConfig
+from gnc_enrich.config import LlmConfig, LlmMode, RunConfig
 from gnc_enrich.domain.models import Proposal, ReceiptEvidence
 from gnc_enrich.email.index import EmailIndexRepository
 from gnc_enrich.gnucash.loader import GnuCashLoader
 from gnc_enrich.matching.email_matcher import EmailMatcher
 from gnc_enrich.matching.receipt_matcher import ReceiptMatcher
 from gnc_enrich.ml.predictor import CategoryPredictor
+from gnc_enrich.llm.client import LlmClient
 from gnc_enrich.receipt.ocr import ReceiptOcrEngine
 from gnc_enrich.receipt.repository import ReceiptRepository
 from gnc_enrich.state.repository import StateRepository
@@ -22,37 +23,19 @@ from gnc_enrich.state.repository import StateRepository
 logger = logging.getLogger(__name__)
 
 
-def _test_llm_connection(
-    endpoint: str, model_name: str, api_key: str, timeout_seconds: int = 180
-) -> bool:
+def _test_llm_connection(config_llm) -> bool:
     """Send a minimal chat completion request to verify the LLM endpoint works. Returns True if OK."""
-    if not endpoint or not model_name:
+    client = LlmClient(config_llm)
+    if not client.enabled:
         logger.warning("LLM endpoint or model missing; skipping connection test")
         return False
     try:
-        import requests
-        payload = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": "Reply with the word OK."}],
-            "max_tokens": 10,
-        }
-        headers = {}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        user_content = payload["messages"][0]["content"]
-        query_chars = len(user_content)
-        t0 = time.perf_counter()
-        resp = requests.post(
-            endpoint, json=payload, headers=headers, timeout=timeout_seconds
+        data = client.chat(
+            messages=[{"role": "user", "content": "Reply with the word OK."}],
+            max_tokens=10,
         )
-        elapsed = time.perf_counter() - t0
-        logger.info(
-            "LLM query (connection test): size=%d chars, response_time=%.2fs",
-            query_chars,
-            elapsed,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        if not data:
+            return False
         if "choices" in data and len(data["choices"]) > 0:
             logger.info("LLM connection OK (endpoint responded successfully)")
             return True
@@ -81,25 +64,29 @@ class EnrichmentPipeline:
                 config.llm.endpoint or "(none)",
                 config.llm.model_name or "(none)",
             )
-            if not _test_llm_connection(
-                config.llm.endpoint,
-                config.llm.model_name,
-                config.llm.api_key,
-                config.llm.timeout_seconds,
-            ):
+            if not _test_llm_connection(config.llm):
                 logger.warning("LLM connection test failed; pipeline will continue but LLM calls may fail")
+            elif getattr(config.llm, "warmup_on_start", False):
+                # Optional warmup to keep the model \"primed\" and reduce first-call latency.
+                logger.info("Running LLM warmup at pipeline start")
+                try:
+                    LlmClient(config.llm).warmup()
+                except Exception:
+                    logger.warning("LLM warmup failed (non-fatal)", exc_info=True)
             if getattr(config.llm, "extraction_endpoint", "") and getattr(config.llm, "extraction_model", ""):
                 logger.info(
                     "Extraction LLM enabled: endpoint=%s model=%s",
                     config.llm.extraction_endpoint,
                     config.llm.extraction_model,
                 )
-                if not _test_llm_connection(
-                    config.llm.extraction_endpoint,
-                    config.llm.extraction_model,
-                    getattr(config.llm, "extraction_api_key", "") or "",
-                    config.llm.timeout_seconds,
-                ):
+                extraction_cfg = LlmConfig(
+                    mode=config.llm.mode,
+                    endpoint=config.llm.extraction_endpoint,
+                    model_name=config.llm.extraction_model,
+                    api_key=getattr(config.llm, "extraction_api_key", "") or "",
+                    timeout_seconds=config.llm.timeout_seconds,
+                )
+                if not _test_llm_connection(extraction_cfg):
                     logger.warning("Extraction LLM connection test failed; will use raw emails for categorisation")
         else:
             logger.info("LLM disabled; using ML/heuristics and OCR only")

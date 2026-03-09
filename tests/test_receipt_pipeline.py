@@ -158,28 +158,21 @@ class TestReceiptOcrEngineLlmFallback:
 
         monkeypatch.setattr(ocr_mod.pytesseract, "image_to_string", fake_image_to_string)
 
-        # Mock requests.post used by the LLM fallback.
-        class DummyResponse:
-            def raise_for_status(self) -> None:
-                return
+        # Mock LlmClient.chat used by the LLM fallback.
+        import gnc_enrich.llm.client as llm_client_mod
 
-            def json(self) -> dict:  # type: ignore[override]
-                return {
-                    "choices": [
-                        {
-                            "message": {
-                                "content": '{"total": "29.99", "items": [{"description": "Bike light", "amount": "29.99"}]}'
-                            }
+        def fake_chat(*_args, **_kwargs):  # type: ignore[override]
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"total": "29.99", "items": [{"description": "Bike light", "amount": "29.99"}]}'
                         }
-                    ]
-                }
+                    }
+                ]
+            }
 
-        def fake_post(*_args, **_kwargs):  # type: ignore[override]
-            return DummyResponse()
-
-        import requests
-
-        monkeypatch.setattr(requests, "post", fake_post)
+        monkeypatch.setattr(llm_client_mod.LlmClient, "chat", staticmethod(fake_chat))
 
         llm_cfg = LlmConfig(
             mode=LlmMode.ONLINE,
@@ -219,13 +212,13 @@ class TestReceiptOcrEngineLlmFallback:
 
         monkeypatch.setattr(ocr_mod.pytesseract, "image_to_string", fake_image_to_string)
 
-        # Make requests.post raise to exercise the error path.
-        import requests
+        # Make LlmClient.chat raise to exercise the error path.
+        import gnc_enrich.llm.client as llm_client_mod
 
-        def failing_post(*_args, **_kwargs):  # type: ignore[override]
+        def failing_chat(*_args, **_kwargs):  # type: ignore[override]
             raise RuntimeError("network failure")
 
-        monkeypatch.setattr(requests, "post", failing_post)
+        monkeypatch.setattr(llm_client_mod.LlmClient, "chat", staticmethod(failing_chat))
 
         llm_cfg = LlmConfig(
             mode=LlmMode.ONLINE,
